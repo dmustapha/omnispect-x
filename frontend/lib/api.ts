@@ -37,20 +37,23 @@ export async function stopAgent() {
   return res.json();
 }
 
-export function createWSConnection(onMessage: (data: any) => void): WebSocket {
-  const ws = new WebSocket(WS_BASE);
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      onMessage(data);
-    } catch { /* ignore parse errors */ }
-  };
-  ws.onclose = () => {
-    // Auto-reconnect after 3s
-    setTimeout(() => {
-      const newWs = createWSConnection(onMessage);
-      Object.assign(ws, newWs);
-    }, 3000);
-  };
-  return ws;
+export function createWSConnection(onMessage: (data: any) => void): { close: () => void } {
+  let ws: WebSocket;
+  let closed = false;
+
+  function connect() {
+    ws = new WebSocket(WS_BASE);
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        onMessage(data);
+      } catch { /* ignore parse errors */ }
+    };
+    ws.onclose = () => {
+      if (!closed) setTimeout(connect, 3000);
+    };
+  }
+
+  connect();
+  return { close() { closed = true; ws.close(); } };
 }

@@ -53,13 +53,11 @@ app.get("/api/trust/:address/premium", x402Gate(), async (c) => {
 
 // ─── Lineage Routes ─────────────────────────────────────────────────────────
 
-app.get("/api/lineage/:address", async (c) => {
-  const address = c.req.param("address");
-  const offset = Number(c.req.query("offset") || "0");
-  const limit = Number(c.req.query("limit") || "50");
+app.get("/api/lineage/decision/:id", async (c) => {
+  const id = c.req.param("id");
   try {
-    const chain = await lineageQuery.getDecisionChain(address, offset, limit);
-    return c.json({ decisions: chain, count: chain.length });
+    const decision = await lineageQuery.getDecision(id);
+    return c.json(decision);
   } catch (err) {
     return c.json({ error: String(err) }, 500);
   }
@@ -75,11 +73,13 @@ app.get("/api/lineage/:address/stats", async (c) => {
   }
 });
 
-app.get("/api/lineage/decision/:id", async (c) => {
-  const id = c.req.param("id");
+app.get("/api/lineage/:address", async (c) => {
+  const address = c.req.param("address");
+  const offset = Number(c.req.query("offset") || "0");
+  const limit = Math.min(Number(c.req.query("limit") || "50"), 100);
   try {
-    const decision = await lineageQuery.getDecision(id);
-    return c.json(decision);
+    const chain = await lineageQuery.getDecisionChain(address, offset, limit);
+    return c.json({ decisions: chain, count: chain.length });
   } catch (err) {
     return c.json({ error: String(err) }, 500);
   }
@@ -110,7 +110,6 @@ app.get("/api/agent/state", (c) => {
 // Bun-native WebSocket upgrade
 const server = Bun.serve({
   port: config.port,
-  idleTimeout: 60,
   fetch(req, server) {
     const url = new URL(req.url);
     if (url.pathname === "/ws") {
@@ -121,6 +120,7 @@ const server = Bun.serve({
     return app.fetch(req);
   },
   websocket: {
+    idleTimeout: 60,
     open(ws) {
       addClient(ws as unknown as WebSocket);
     },

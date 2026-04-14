@@ -21,7 +21,9 @@ export default function LineagePage() {
       setDecisions(lineageData.decisions || []);
       setStats(statsData);
     } catch (err) {
-      console.error(err);
+      console.error("Lineage fetch error:", err);
+      setDecisions([]);
+      setStats(null);
     }
     setLoading(false);
   }

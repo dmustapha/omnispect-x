@@ -1,5 +1,7 @@
 import type { Context, Next } from "hono";
 import { createHmac } from "crypto";
+import { privateKeyToAccount } from "viem/accounts";
+import type { Hex } from "viem";
 import { config } from "../config";
 
 const FACILITATOR_URL = config.x402.facilitatorUrl; // https://web3.okx.com/api/v6/x402
@@ -75,7 +77,7 @@ export function x402Gate() {
         description: "Premium Omnispect-X Trust Report",
         mimeType: "application/json",
         payToAddress: config.agentWallet.privateKey
-          ? "DERIVE_FROM_WALLET"
+          ? privateKeyToAccount(config.agentWallet.privateKey as Hex).address
           : "0x0000000000000000000000000000000000000000",
         requiredDeadlineSeconds: 300,
         extra: {
