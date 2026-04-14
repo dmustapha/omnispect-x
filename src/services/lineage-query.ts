@@ -160,7 +160,9 @@ export async function getDecisionChain(
     })
   );
 
-  return enriched.map(r => r.status === "fulfilled" ? r.value : (r as any).reason);
+  return enriched
+    .filter(r => r.status === "fulfilled")
+    .map(r => (r as PromiseFulfilledResult<DecisionNode>).value);
 }
 
 export async function getDecision(decisionId: string): Promise<DecisionNode> {

@@ -11,3 +11,4 @@ frontend/node_modules/
 .forge-state.json
 contracts/broadcast/
 contracts/cache/
+frontend/tsconfig.tsbuildinfo

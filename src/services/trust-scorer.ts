@@ -18,20 +18,25 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
   const { agentAddress, chainId = 196 } = req;
   const chainIndex = String(chainId);
 
-  // Fetch all data in parallel (6 OnchainOS skills + Uniswap)
-  const [portfolio, balances, smartMoneyData, securityData, priceData, klineData, uniswapRisk] =
+  // Fetch base data first, then pass balances to sub-fetchers to avoid redundant calls
+  const [portfolio, balances, smartMoneyData] =
     await Promise.allSettled([
       okxClient.walletPortfolio.totalValue(agentAddress, chainIndex),
       okxClient.walletPortfolio.allBalances(agentAddress, chainIndex),
       okxClient.dexSignal.smartMoney(chainIndex),
-      fetchSecurityForTokens(agentAddress, chainIndex),
-      fetchPricesForTokens(agentAddress, chainIndex),
-      fetchKlinesForTokens(agentAddress, chainIndex),
-      fetchUniswapRisk(agentAddress, chainIndex),
+    ]);
+
+  const balanceList = balances.status === "fulfilled" ? balances.value : [];
+
+  const [securityData, priceData, klineData, uniswapRisk] =
+    await Promise.allSettled([
+      fetchSecurityForTokens(balanceList, chainIndex),
+      fetchPricesForTokens(balanceList, chainIndex),
+      fetchKlinesForTokens(balanceList, chainIndex),
+      fetchUniswapRisk(balanceList, chainIndex),
     ]);
 
   const portfolioVal = portfolio.status === "fulfilled" ? portfolio.value : null;
-  const balanceList = balances.status === "fulfilled" ? balances.value : [];
   const smartMoney = smartMoneyData.status === "fulfilled" ? smartMoneyData.value : [];
   const security = securityData.status === "fulfilled" ? securityData.value : [];
   const prices = priceData.status === "fulfilled" ? priceData.value : [];
@@ -83,10 +88,9 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
 // ─── Data Fetchers ──────────────────────────────────────────────────────────
 
 async function fetchSecurityForTokens(
-  agentAddress: string,
+  balances: TokenBalance[],
   chainIndex: string
 ): Promise<SecurityReport[]> {
-  const balances = await okxClient.walletPortfolio.allBalances(agentAddress, chainIndex);
   const tokenAddresses = balances
     .filter(b => b.tokenAddress && b.tokenAddress !== "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
     .slice(0, 5)
@@ -99,10 +103,9 @@ async function fetchSecurityForTokens(
 }
 
 async function fetchPricesForTokens(
-  agentAddress: string,
+  balances: TokenBalance[],
   chainIndex: string
 ): Promise<PriceInfo[]> {
-  const balances = await okxClient.walletPortfolio.allBalances(agentAddress, chainIndex);
   const tokenAddresses = balances
     .filter(b => b.tokenAddress && b.tokenAddress !== "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
     .slice(0, 5)
@@ -115,10 +118,9 @@ async function fetchPricesForTokens(
 }
 
 async function fetchKlinesForTokens(
-  agentAddress: string,
+  balances: TokenBalance[],
   chainIndex: string
 ): Promise<KlineData[][]> {
-  const balances = await okxClient.walletPortfolio.allBalances(agentAddress, chainIndex);
   const tokenAddresses = balances
     .filter(b => b.tokenAddress && b.tokenAddress !== "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
     .slice(0, 3)
@@ -131,10 +133,9 @@ async function fetchKlinesForTokens(
 }
 
 async function fetchUniswapRisk(
-  agentAddress: string,
+  balances: TokenBalance[],
   chainIndex: string
 ): Promise<UniswapRiskAssessment> {
-  const balances = await okxClient.walletPortfolio.allBalances(agentAddress, chainIndex);
   const tokenAddresses = balances
     .filter(b => b.tokenAddress && b.tokenAddress !== "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")
     .slice(0, 3)

@@ -51,7 +51,7 @@ export function TrustScoreCard({ data }: { data: TrustScoreData }) {
         ))}
       </div>
 
-      {data.uniswapRisk.poolsAnalyzed > 0 && (
+      {data.uniswapRisk?.poolsAnalyzed > 0 && (
         <div className="mt-4 p-3 rounded-lg bg-slate-800/50">
           <h3 className="text-sm font-semibold text-slate-300 mb-1">Uniswap Risk</h3>
           <div className="text-sm text-slate-400">
