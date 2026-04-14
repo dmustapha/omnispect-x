@@ -1,0 +1,65 @@
+{
+  "version": "2.0",
+  "hackathon_name": "OKX Build X Hackathon Season 2",
+  "warroom_iteration": 1,
+  "current_round": "round-4",
+  "working_dir": "/Users/MAC/okx-buildx",
+  "autonomous_mode": false,
+  "agents": [
+    {
+      "codename": "INTEG",
+      "full_name": "Integration Maximalist",
+      "criteria_alignment": ["OnchainOS/Uniswap Integration & Innovation"]
+    },
+    {
+      "codename": "XLAYER",
+      "full_name": "Ecosystem Strategist",
+      "criteria_alignment": ["X Layer Ecosystem Fit"]
+    },
+    {
+      "codename": "AIUX",
+      "full_name": "AI Experience Designer",
+      "criteria_alignment": ["AI Interaction Experience"]
+    },
+    {
+      "codename": "WILD",
+      "full_name": "The Contrarian",
+      "criteria_alignment": ["Innovation/Originality", "Product Completeness"]
+    }
+  ],
+  "ideas": {
+    "alive": ["WITNESS", "ORACLE-MIND", "TRUST-LENS", "AEGIS"],
+    "killed": [
+      {"name": "AGENT-COURT", "cause": "Novelty tax — verdikt port", "round": "round-3"},
+      {"name": "MEME-GUARD", "cause": "Shallow integration + no action chain", "round": "round-3"},
+      {"name": "AGENT-ESCROW", "cause": "Subset of dead AGENT-COURT", "round": "round-3"},
+      {"name": "AGENT-RANK", "cause": "Overlaps TRUST-LENS, lower scores", "round": "round-3"},
+      {"name": "DATA-SAGE", "cause": "Too narrow, no champion", "round": "round-3"},
+      {"name": "SENTINEL", "cause": "Too narrow, no champion", "round": "round-3"},
+      {"name": "SHIELD-AGENT", "cause": "Feature not product", "round": "round-3"},
+      {"name": "WHALE-WHISPER", "cause": "Generic commodity intelligence", "round": "round-3"},
+      {"name": "ARBITER", "cause": "Saturated — Helios does cross-DEX", "round": "kill-list"},
+      {"name": "YIELD-MIND", "cause": "Already built — Leigent", "round": "kill-list"},
+      {"name": "COPY-TRADE-AI", "cause": "Saturated", "round": "kill-list"},
+      {"name": "AGENT-ECONOMY", "cause": "Demo impossible solo", "round": "kill-list"}
+    ]
+  },
+  "corrections": [
+    "R1: Every surviving idea must include Uniswap integration plan as core architecture, not mitigation footnote"
+  ],
+  "rounds_complete": ["round-0", "round-1", "round-2", "round-3", "round-3.5", "round-4"],
+  "generation_stats": {
+    "raw_ideas_generated": 16,
+    "killed_by_kill_list": 3,
+    "killed_by_demo_test": 1,
+    "killed_by_score_threshold": 0,
+    "salvaged_kernels": 3,
+    "final_presented": 12
+  },
+  "health_metrics": {},
+  "winner": "Omnispect-X",
+  "winner_score": 9.07,
+  "backup": "TRUST-LENS",
+  "backup_score": 8.17,
+  "context_percentage": 65
+}
