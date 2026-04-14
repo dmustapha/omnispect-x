@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+*.lockb
+contracts/out/
+contracts/cache/
+contracts/lib/
+frontend/.next/
+frontend/node_modules/
+.build-state.json
+.forge-state.json
+contracts/broadcast/
+contracts/cache/

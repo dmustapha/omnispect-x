@@ -1,0 +1,29 @@
+{
+  "name": "omnispect-x",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run src/server/index.ts",
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:all": "concurrently \"bun run dev\" \"bun run dev:frontend\"",
+    "build": "bun build src/server/index.ts --outdir dist --target bun",
+    "build:frontend": "cd frontend && npm run build",
+    "mcp": "bun run src/server/mcp.ts",
+    "deploy": "cd contracts && forge script script/Deploy.s.sol --rpc-url $X_LAYER_RPC --broadcast --verify",
+    "test:contracts": "cd contracts && forge test -vvv",
+    "seed": "bun run scripts/seed.ts",
+    "typecheck": "bun x tsc --noEmit && cd frontend && npx tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "hono": "4.4.0",
+    "viem": "2.21.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/bun": "1.1.0",
+    "concurrently": "8.2.0",
+    "typescript": "5.8.3"
+  }
+}
