@@ -5,6 +5,19 @@ const UNISWAP_API = "https://trade-api.gateway.uniswap.org";
 const X_LAYER_CHAIN_ID = 196;
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
+// ─── Retry Helper ──────────────────────────────────────────────────────────
+
+async function withRetry<T>(fn: () => Promise<T>, retries = 2, baseDelay = 500): Promise<T> {
+  for (let i = 0; i <= retries; i++) {
+    try { return await fn(); }
+    catch (err) {
+      if (i === retries) throw err;
+      await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, i)));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 // ─── Quote ──────────────────────────────────────────────────────────────────
 
 export async function getQuote(params: {
@@ -14,35 +27,37 @@ export async function getQuote(params: {
   chainId?: number;
   swapper?: string;
 }): Promise<UniswapQuote> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (config.uniswap.apiKey) headers["x-api-key"] = config.uniswap.apiKey;
+  return withRetry(async () => {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (config.uniswap.apiKey) headers["x-api-key"] = config.uniswap.apiKey;
 
-  const res = await fetch(`${UNISWAP_API}/v1/quote`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      type: "EXACT_INPUT",
-      tokenIn: params.tokenIn,
-      tokenInChainId: params.chainId ?? X_LAYER_CHAIN_ID,
-      tokenOut: params.tokenOut,
-      tokenOutChainId: params.chainId ?? X_LAYER_CHAIN_ID,
-      amount: params.amountIn,
-      swapper: params.swapper ?? "0x0000000000000000000000000000000000000000",
-    }),
+    const res = await fetch(`${UNISWAP_API}/v1/quote`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        type: "EXACT_INPUT",
+        tokenIn: params.tokenIn,
+        tokenInChainId: params.chainId ?? X_LAYER_CHAIN_ID,
+        tokenOut: params.tokenOut,
+        tokenOutChainId: params.chainId ?? X_LAYER_CHAIN_ID,
+        amount: params.amountIn,
+        swapper: params.swapper ?? "0x0000000000000000000000000000000000000000",
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Uniswap quote failed: ${res.status} ${text}`);
+    }
+
+    const json = await res.json();
+    return {
+      amountOut: json.quote?.amountOut ?? "0",
+      gasFee: json.quote?.gasFee ?? "0",
+      priceImpact: json.quote?.priceImpact ?? 0,
+      routing: json.routing ?? "UNKNOWN",
+    };
   });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Uniswap quote failed: ${res.status} ${text}`);
-  }
-
-  const json = await res.json();
-  return {
-    amountOut: json.quote?.amountOut ?? "0",
-    gasFee: json.quote?.gasFee ?? "0",
-    priceImpact: json.quote?.priceImpact ?? 0,
-    routing: json.routing ?? "UNKNOWN",
-  };
 }
 
 // ─── Pool Risk Assessment ───────────────────────────────────────────────────
@@ -65,13 +80,14 @@ export async function getPoolRisk(tokenAddress: string): Promise<PoolRiskAssessm
       amountIn: "10000000000000000000", // 10 OKB
     });
   } catch {
-    // Pool too thin for large quote — high risk
+    // Pool too thin for large quote — high risk, flagged as fallback
     return {
       tokenAddress,
       liquidityDepth: 0,
       concentrationRatio: 1,
       impliedVolatility: 1,
       riskScore: 10,
+      isFallback: true,
     };
   }
 
@@ -98,6 +114,7 @@ export async function getPoolRisk(tokenAddress: string): Promise<PoolRiskAssessm
     concentrationRatio,
     impliedVolatility,
     riskScore,
+    isFallback: false,
   };
 }
 

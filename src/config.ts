@@ -26,7 +26,7 @@ export const config: AppConfig = {
     privateKey: process.env.PRIVATE_KEY || "",
   },
   agentSecret: process.env.AGENT_SECRET || "",
-  corsOrigin: process.env.CORS_ORIGIN || "http://localhost:3000",
+  corsOrigin: process.env.CORS_ORIGIN || "http://localhost:3000,https://omnispect-x.vercel.app",
   x402: {
     paymentTokenAddress: "0x4ae46a509f6b1d9056937ba4500cb143933d2dc8", // USDG
     pricePerReport: "10000000000000000", // 0.01 USDG (18 decimals)

@@ -77,7 +77,10 @@ function agentAuth() {
 
 // ─── Middleware ──────────────────────────────────────────────────────────────
 
-app.use("*", cors({ origin: config.corsOrigin }));
+const allowedOrigins = config.corsOrigin.split(",").map(o => o.trim());
+app.use("*", cors({
+  origin: (origin) => allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
+}));
 app.use("/api/*", rateLimit());
 
 // ─── Health Check ───────────────────────────────────────────────────────────

@@ -3,7 +3,10 @@
 import { useState } from "react";
 import dynamic from "next/dynamic";
 
-const RadarChart = dynamic(() => import("./RadarChart").then((m) => m.RadarChart), { ssr: false });
+const RadarChart = dynamic(() => import("./RadarChart").then((m) => m.RadarChart), {
+  ssr: false,
+  loading: () => <div className="h-48 flex items-center justify-center text-xs text-ox-text-muted">Loading chart...</div>,
+});
 
 interface Finding {
   category: string;
@@ -155,8 +158,13 @@ export function TrustScoreCard({ data }: { data: TrustScoreData }) {
               return (
                 <div key={key}>
                   <div
+                    role={hasEvidence ? "button" : undefined}
+                    tabIndex={hasEvidence ? 0 : undefined}
+                    aria-expanded={hasEvidence ? isExpanded : undefined}
+                    aria-label={hasEvidence ? `${DIM_LABELS[key] || key} details` : undefined}
                     className={`cursor-pointer rounded-lg transition-colors ${hasEvidence ? "hover:bg-ox-surface/30" : ""} px-1 py-0.5 -mx-1`}
                     onClick={() => hasEvidence && setExpandedDim(isExpanded ? null : key)}
+                    onKeyDown={(e) => { if (hasEvidence && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); setExpandedDim(isExpanded ? null : key); } }}
                   >
                     <div className="flex justify-between text-xs mb-0.5">
                       <span className="text-ox-text-muted flex items-center gap-1">

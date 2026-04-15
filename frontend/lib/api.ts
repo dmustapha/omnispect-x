@@ -96,7 +96,9 @@ export function createWSConnection(
       try {
         const data = JSON.parse(event.data) as WSEvent;
         onMessage(data);
-      } catch { /* ignore parse errors */ }
+      } catch (err) {
+        console.warn("[ws] Failed to parse message:", err);
+      }
     };
     ws.onerror = (err) => { onError?.(err); };
     ws.onclose = () => {

@@ -273,6 +273,7 @@ export interface PoolRiskAssessment {
   concentrationRatio: number; // 0-1, how concentrated liquidity is
   impliedVolatility: number; // from price impact
   riskScore: number; // 0-100, lower = riskier
+  isFallback?: boolean; // true when data is synthetic (API failure)
 }
 
 // ─── Demo Agent Types ───────────────────────────────────────────────────────

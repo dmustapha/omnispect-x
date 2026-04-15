@@ -1,12 +1,5 @@
 import Link from "next/link";
 
-const STATS = [
-  { value: "8", label: "OnchainOS Skills" },
-  { value: "4", label: "Trust Dimensions" },
-  { value: "7", label: "Action Types" },
-  { value: "<$0.001", label: "Per Lineage Log" },
-];
-
 const INTEGRATIONS = [
   "okx-agentic-wallet", "okx-wallet-portfolio", "okx-security",
   "okx-dex-signal", "okx-dex-token", "okx-dex-market",
@@ -122,22 +115,6 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ── Stats Strip (overlapping) ─────────────────────── */}
-      <section className="relative -mt-6 z-10 mb-10">
-        <div className="ox-glass-20 ox-glass-edge-strong rounded-xl px-6 py-5 flex flex-wrap items-center justify-around gap-4">
-          {STATS.map((s, i) => (
-            <div key={s.label} className="flex items-center gap-3">
-              {i > 0 && (
-                <div className="hidden md:block w-px h-10" style={{ background: "linear-gradient(180deg, transparent, var(--ox-border-glow), transparent)" }} aria-hidden="true" />
-              )}
-              <div className="flex items-center gap-3 ml-3 first:ml-0">
-                <span className="font-display font-bold text-2xl text-ox-cyan">{s.value}</span>
-                <span className="text-sm text-ox-text-secondary">{s.label}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
 
       {/* ── Features ──────────────────────────────────────── */}
       <section className="pb-10">

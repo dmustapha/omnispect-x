@@ -1,3 +1,5 @@
+"use client";
+
 import { AgentMonitor } from "../../components/AgentMonitor";
 
 export default function MonitorPage() {

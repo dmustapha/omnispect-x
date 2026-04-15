@@ -110,7 +110,7 @@ async function settlePayment(paymentHeader: string): Promise<boolean> {
 export function x402Gate() {
   return async (c: Context, next: Next) => {
     // Demo mode bypass — OKX x402 facilitator endpoints not yet available
-    if (process.env.X402_DEMO_MODE === "true") {
+    if ((process.env.X402_DEMO_MODE || "").toLowerCase() === "true") {
       await next();
       return;
     }

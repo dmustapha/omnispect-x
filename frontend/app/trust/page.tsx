@@ -2,18 +2,18 @@
 
 import { useState, useRef } from "react";
 import { fetchTrustScore } from "../../lib/api";
-import { TrustScoreCard } from "../../components/TrustScoreCard";
+import { TrustScoreCard, type TrustScoreData } from "../../components/TrustScoreCard";
 import { SkillLoadingSteps } from "../../components/SkillLoadingSteps";
 
 export default function TrustPage() {
   const [address, setAddress] = useState("");
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<TrustScoreData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
 
   async function handleSearch() {
-    if (!address.startsWith("0x") || address.length !== 42) {
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
       setError("Enter a valid 0x address");
       return;
     }

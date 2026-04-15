@@ -3,12 +3,16 @@
 import { useState, useRef } from "react";
 import dynamic from "next/dynamic";
 import { fetchTrustScore } from "../lib/api";
+import type { TrustScoreData } from "./TrustScoreCard";
 
-const RadarChart = dynamic(() => import("./RadarChart").then((m) => m.RadarChart), { ssr: false });
+const RadarChart = dynamic(() => import("./RadarChart").then((m) => m.RadarChart), {
+  ssr: false,
+  loading: () => <div className="h-48 flex items-center justify-center text-xs text-ox-text-muted">Loading chart...</div>,
+});
 
 interface AgentScore {
   address: string;
-  data: any;
+  data: TrustScoreData;
   color: string;
 }
 
@@ -40,7 +44,7 @@ export function CompareView() {
   const inFlight = useRef(false);
 
   async function handleCompare() {
-    const validAddrs = addresses.filter((a) => a.startsWith("0x") && a.length === 42);
+    const validAddrs = addresses.filter((a) => /^0x[a-fA-F0-9]{40}$/.test(a));
     if (validAddrs.length < 2) {
       setError("Enter at least 2 valid addresses to compare.");
       return;
@@ -54,7 +58,7 @@ export function CompareView() {
       const scored: AgentScore[] = [];
       results.forEach((r, i) => {
         if (r.status === "fulfilled") {
-          scored.push({ address: validAddrs[i], data: r.value, color: AGENT_COLORS[i].hex });
+          scored.push({ address: validAddrs[i], data: r.value, color: AGENT_COLORS[i % AGENT_COLORS.length].hex });
         }
       });
       setAgents(scored);
@@ -234,7 +238,7 @@ export function CompareView() {
                       </div>
                     </div>
                     <div className="flex-1 space-y-1.5">
-                      {Object.entries(agent.data.dimensions).map(([key, dim]: [string, any]) => (
+                      {Object.entries(agent.data.dimensions).map(([key, dim]) => (
                         <div key={key} className="flex items-center gap-2">
                           <span className="text-[10px] text-ox-text-muted w-16 truncate">
                             {DIM_LABELS[key] || key}
