@@ -19,6 +19,13 @@
 
 ---
 
+## Live Demo
+
+**Frontend:** [omnispect-x.vercel.app](https://omnispect-x.vercel.app)
+**Backend API:** [omnispect-x-api.onrender.com](https://omnispect-x-api.onrender.com/health)
+
+---
+
 ![Landing Page](docs/images/landing.png)
 
 ## What It Does
