@@ -322,7 +322,7 @@ export function registerAllTools(server: McpServer) {
         fromToken: z.string().describe("Source token address"),
         toToken: z.string().describe("Destination token address"),
         amount: z.string().describe("Amount in smallest unit (wei)"),
-        slippage: z.string().optional().describe("Slippage tolerance (default: '0.01' = 1%)"),
+        slippage: z.string().optional().describe("Slippage percent (default: '1' = 1%)"),
         userWalletAddress: z.string().describe("Wallet address executing the swap"),
       },
     },

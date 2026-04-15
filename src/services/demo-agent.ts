@@ -351,7 +351,7 @@ async function runCycle() {
         fromToken: NATIVE_TOKEN,
         toToken: topSignal.tokenAddress,
         amount: swapAmount,
-        slippage: "0.01",
+        slippage: "1",
         userWalletAddress: getAccount().address,
       });
 
@@ -486,7 +486,7 @@ async function evaluateExistingPositions() {
             fromToken: pos.tokenAddress,
             toToken: NATIVE_TOKEN,
             amount: pos.amount,
-            slippage: "0.02",
+            slippage: "2",
             userWalletAddress: getAccount().address,
           });
 
