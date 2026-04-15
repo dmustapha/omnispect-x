@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: omnispect-x-api
+    runtime: docker
+    repo: https://github.com/dmustapha/omnispect-x
+    plan: free
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: PORT
+        value: 3001
+      - key: OKX_API_KEY
+        sync: false
+      - key: OKX_SECRET_KEY
+        sync: false
+      - key: OKX_PASSPHRASE
+        sync: false
+      - key: PRIVATE_KEY
+        sync: false
+      - key: PINATA_JWT
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
