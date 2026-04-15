@@ -59,6 +59,7 @@ export interface TrustScoreResponse {
   address: string;
   overallScore: number; // 0-100
   classification: "SAFE" | "CAUTION" | "BLOCKLIST";
+  summary: string; // LLM-generated narrative summary of findings
   dimensions: {
     transactionPatterns: DimensionScore;
     contractInteractions: DimensionScore;

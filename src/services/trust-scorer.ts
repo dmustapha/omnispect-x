@@ -1,6 +1,7 @@
 import { okxClient } from "../lib/okx-client";
 import { uniswapClient } from "../lib/uniswap-client";
 import { lineageQuery } from "./lineage-query";
+import { config } from "../config";
 import type {
   TrustScoreRequest,
   TrustScoreResponse,
@@ -189,11 +190,20 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
   const recommendations = generateRecommendations(classification, tp, ci, ff, bc, agentProfile);
   const queryDurationMs = Date.now() - startMs;
   const activeChains = Array.from(chainMap.keys()).map(c => CHAIN_NAMES[c] || `Chain ${c}`);
+  const chainsForSummary = activeChains.length > 0 ? activeChains : Object.values(CHAIN_NAMES);
+
+  // Generate narrative summary (LLM-powered with template fallback)
+  const summary = await generateSummary(
+    agentAddress, overallScore, classification,
+    tp, ci, ff, bc, agentProfile,
+    chainsForSummary, formatUsd(computedTotalValue), meaningfulTokens.length,
+  );
 
   const response: TrustScoreResponse = {
     address: agentAddress,
     overallScore,
     classification,
+    summary,
     dimensions: {
       transactionPatterns: tp,
       contractInteractions: ci,
@@ -606,6 +616,113 @@ function formatUsd(value: number): string {
   if (value > 1e6) return `$${(value / 1e6).toFixed(2)}M`;
   if (value > 1e3) return `$${(value / 1e3).toFixed(2)}K`;
   return `$${value.toFixed(2)}`;
+}
+
+// ─── LLM Narrative Summary ───────────────────────────────────────────────
+
+async function generateSummary(
+  address: string,
+  overallScore: number,
+  classification: string,
+  tp: DimensionScore,
+  ci: DimensionScore,
+  ff: DimensionScore,
+  bc: DimensionScore,
+  agentProfile: AgentProfile,
+  chainsQueried: string[],
+  totalValue: string,
+  tokenCount: number,
+): Promise<string> {
+  // Template fallback if no API key
+  if (!config.anthropic.apiKey) {
+    return buildTemplateSummary(address, overallScore, classification, tp, ci, ff, bc, agentProfile, chainsQueried, totalValue, tokenCount);
+  }
+
+  const prompt = JSON.stringify({
+    address,
+    overallScore,
+    classification,
+    dimensions: {
+      transactionPatterns: { score: tp.score, findingCount: tp.findings.length, metrics: tp.evidence.rawMetrics },
+      contractInteractions: { score: ci.score, findingCount: ci.findings.length, metrics: ci.evidence.rawMetrics },
+      fundFlow: { score: ff.score, findingCount: ff.findings.length, metrics: ff.evidence.rawMetrics },
+      behavioralConsistency: { score: bc.score, findingCount: bc.findings.length, metrics: bc.evidence.rawMetrics },
+    },
+    agentProfile,
+    chainsQueried,
+    totalValue,
+    tokenCount,
+  });
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15_000);
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": config.anthropic.apiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: config.anthropic.model,
+        max_tokens: 300,
+        system: `You are a blockchain wallet analyst. Given trust score data for a wallet address, write a 2-4 sentence narrative summary of what was found. Be specific about portfolio value, chain activity, token holdings, and risk indicators. Use a professional, concise tone. Do not use markdown. Do not repeat the score number or classification label. Focus on WHAT was found in the wallet and WHY it matters. If the wallet has significant holdings across multiple chains, highlight that. If risk tokens were found, mention them.`,
+        messages: [{ role: "user", content: prompt }],
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) throw new Error(`API ${res.status}`);
+    const json = await res.json() as { content: Array<{ text: string }> };
+    return json.content?.[0]?.text?.trim() || buildTemplateSummary(address, overallScore, classification, tp, ci, ff, bc, agentProfile, chainsQueried, totalValue, tokenCount);
+  } catch {
+    return buildTemplateSummary(address, overallScore, classification, tp, ci, ff, bc, agentProfile, chainsQueried, totalValue, tokenCount);
+  }
+}
+
+function buildTemplateSummary(
+  _address: string,
+  overallScore: number,
+  classification: string,
+  tp: DimensionScore,
+  ci: DimensionScore,
+  ff: DimensionScore,
+  bc: DimensionScore,
+  agentProfile: AgentProfile,
+  chainsQueried: string[],
+  totalValue: string,
+  tokenCount: number,
+): string {
+  const parts: string[] = [];
+  parts.push(`This wallet holds ${totalValue} across ${tokenCount} tokens on ${chainsQueried.join(", ")}.`);
+
+  if (agentProfile.isAgent) {
+    parts.push(`Identified as an AI agent wallet with ${agentProfile.totalDecisions} on-chain decisions logged.`);
+  }
+
+  const weakAxes: string[] = [];
+  if (tp.score < 10) weakAxes.push("transaction activity");
+  if (ci.score < 10) weakAxes.push("contract safety");
+  if (ff.score < 10) weakAxes.push("fund diversification");
+  if (bc.score < 10) weakAxes.push("behavioral consistency");
+
+  if (weakAxes.length > 0) {
+    parts.push(`Weak areas: ${weakAxes.join(", ")}.`);
+  }
+
+  const criticalFindings = [...tp.findings, ...ci.findings, ...ff.findings, ...bc.findings]
+    .filter(f => f.severity === "CRITICAL" || f.severity === "HIGH");
+  if (criticalFindings.length > 0) {
+    parts.push(`Found ${criticalFindings.length} high-severity finding(s) requiring attention.`);
+  }
+
+  if (classification === "SAFE" && overallScore >= 70) {
+    parts.push("Overall, a healthy on-chain profile with no major red flags.");
+  }
+
+  return parts.join(" ");
 }
 
 function generateRecommendations(
