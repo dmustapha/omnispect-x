@@ -35,6 +35,7 @@ export interface TrustScoreData {
     behavioralConsistency: DimensionData;
   };
   uniswapRisk: { poolsAnalyzed: number; avgLiquidityScore: number; concentrationRisk: number };
+  agentProfile?: { isAgent: boolean; totalDecisions: number; registeredOnChain: boolean };
   recommendations: string[];
   metadata?: {
     chainsQueried: string[];
@@ -107,6 +108,14 @@ export function TrustScoreCard({ data }: { data: TrustScoreData }) {
           <div className="flex items-center gap-2 mb-1 flex-wrap">
             <span className="text-sm font-mono text-ox-text-secondary">{shortAddr}</span>
             <span className={`ox-badge ${style.badgeClass}`}>{style.label}</span>
+            {data.agentProfile?.isAgent && (
+              <span className="ox-badge bg-ox-cyan/15 text-ox-cyan border border-ox-cyan/25">
+                AI Agent
+                {data.agentProfile.totalDecisions > 0 && (
+                  <span className="ml-1 opacity-70">{data.agentProfile.totalDecisions} decisions</span>
+                )}
+              </span>
+            )}
           </div>
           <a
             href={`https://www.okx.com/web3/explorer/xlayer/address/${data.address}`}

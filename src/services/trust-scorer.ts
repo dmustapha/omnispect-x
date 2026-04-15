@@ -1,11 +1,13 @@
 import { okxClient } from "../lib/okx-client";
 import { uniswapClient } from "../lib/uniswap-client";
+import { lineageQuery } from "./lineage-query";
 import type {
   TrustScoreRequest,
   TrustScoreResponse,
   Finding,
   DimensionScore,
   UniswapRiskAssessment,
+  AgentProfile,
   TokenBalance,
   SecurityReport,
   PoolRiskAssessment,
@@ -95,7 +97,7 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
     .slice(0, 5)
     .map(t => ({ address: t.tokenAddress, chainIndex: t.chainIndex || "196" }));
 
-  const [scanResults, poolResults, overviewResult] = await Promise.all([
+  const [scanResults, poolResults, overviewResult, agentStatsResult] = await Promise.all([
     // Token security scans (top 5 non-native tokens)
     Promise.allSettled(
       topTokenAddresses.map(t =>
@@ -110,6 +112,8 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
     ),
     // Portfolio overview (PnL, win rate, trade count)
     okxClient.walletPortfolio.portfolioOverview(agentAddress).catch(() => null),
+    // On-chain agent detection via DecisionLineageLogger
+    lineageQuery.getAgentStats(agentAddress).catch(() => null),
   ]);
 
   const securityScans: SecurityReport[] = scanResults
@@ -123,6 +127,15 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
     .filter(Boolean);
 
   const overview: PortfolioOverview | null = overviewResult;
+
+  // Agent profile (differentiates agentic wallets from regular ones)
+  const agentProfile: AgentProfile = agentStatsResult
+    ? {
+        isAgent: agentStatsResult.isRegistered || agentStatsResult.totalDecisions > 0,
+        totalDecisions: agentStatsResult.totalDecisions,
+        registeredOnChain: agentStatsResult.isRegistered,
+      }
+    : { isAgent: false, totalDecisions: 0, registeredOnChain: false };
 
   // Compute uniswap risk summary
   const uniswapRisk: UniswapRiskAssessment = poolRisks.length > 0
@@ -152,7 +165,7 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
   else if (hasHigh || overallScore < 70) classification = "CAUTION";
   else classification = "SAFE";
 
-  const recommendations = generateRecommendations(classification, tp, ci, ff, bc);
+  const recommendations = generateRecommendations(classification, tp, ci, ff, bc, agentProfile);
   const queryDurationMs = Date.now() - startMs;
   const activeChains = Array.from(chainMap.keys()).map(c => CHAIN_NAMES[c] || `Chain ${c}`);
 
@@ -167,6 +180,7 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
       behavioralConsistency: bc,
     },
     uniswapRisk,
+    agentProfile,
     recommendations,
     metadata: {
       chainsQueried: activeChains.length > 0 ? activeChains : Object.values(CHAIN_NAMES),
@@ -576,22 +590,32 @@ function generateRecommendations(
   ci: DimensionScore,
   ff: DimensionScore,
   _bc: DimensionScore,
+  agentProfile: AgentProfile,
 ): string[] {
   const recs: string[] = [];
+
+  if (agentProfile.isAgent) {
+    recs.push(
+      `Identified as an AI agent wallet with ${agentProfile.totalDecisions} on-chain decisions logged.`
+    );
+    if (agentProfile.registeredOnChain) {
+      recs.push("Agent is registered on the DecisionLineageLogger contract. Decision history is auditable.");
+    }
+  }
 
   if (classification === "BLOCKLIST") {
     recs.push("Exercise extreme caution. Significant risk indicators detected.");
   }
 
   if (ci.findings.some(f => f.category === "riskTokens" && f.severity === "CRITICAL")) {
-    recs.push("Multiple risk-flagged tokens held — investigate token legitimacy.");
+    recs.push("Multiple risk-flagged tokens held. Investigate token legitimacy.");
   }
 
   if (ff.score < 10) {
     recs.push("High fund concentration risk. Portfolio lacks diversification.");
   }
 
-  if (tp.score < 10) {
+  if (tp.score < 10 && !agentProfile.isAgent) {
     recs.push("Low on-chain activity. Wallet may be new or inactive.");
   }
 
