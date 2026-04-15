@@ -33,7 +33,7 @@ export async function generateReasoning(input: ReasoningInput): Promise<Reasonin
   });
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
+  const timeout = setTimeout(() => controller.abort(), 30_000);
 
   try {
     const res = await fetch("https://api.anthropic.com/v1/messages", {

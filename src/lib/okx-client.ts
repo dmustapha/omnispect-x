@@ -3,7 +3,6 @@ import type {
   OKXResponse,
   PortfolioValue,
   PortfolioOverview,
-  TransactionRecord,
   TokenBalance,
   SecurityReport,
   SmartMoneyActivity,
@@ -112,12 +111,6 @@ export async function portfolioOverview(address: string): Promise<PortfolioOverv
   } catch { return null; }
 }
 
-export async function transactionsByAddress(address: string, chains = MULTI_CHAINS, _limit = 50): Promise<TransactionRecord[]> {
-  // OKX doesn't expose a public tx-history endpoint via web3 API
-  // We derive transaction info from balance data instead
-  return [];
-}
-
 // ─── Security ───────────────────────────────────────────────────────────────
 
 export async function tokenScan(tokenAddress: string, chainIndex = "196"): Promise<SecurityReport> {
@@ -129,24 +122,18 @@ export async function tokenScan(tokenAddress: string, chainIndex = "196"): Promi
 // ─── DEX Signal ─────────────────────────────────────────────────────────────
 
 export async function smartMoney(chainIndex = "1", limit = 20): Promise<SmartMoneyActivity[]> {
-  try {
-    const path = `/api/v5/dex/tracker/activities?chainIndex=${chainIndex}&trackerType=smart_money&limit=${limit}`;
-    return await okxGet<SmartMoneyActivity>(path);
-  } catch { return []; }
+  const path = `/api/v5/dex/tracker/activities?chainIndex=${chainIndex}&trackerType=smart_money&limit=${limit}`;
+  return okxGet<SmartMoneyActivity>(path);
 }
 
 export async function signals(chainIndex = "1"): Promise<Signal[]> {
-  try {
-    const path = `/api/v5/dex/tracker/signal/list?chainIndex=${chainIndex}`;
-    return await okxGet<Signal>(path);
-  } catch { return []; }
+  const path = `/api/v5/dex/tracker/signal/list?chainIndex=${chainIndex}`;
+  return okxGet<Signal>(path);
 }
 
 export async function leaderboardList(chainIndex = "1"): Promise<LeaderboardEntry[]> {
-  try {
-    const path = `/api/v5/dex/tracker/leaderboard/list?chainIndex=${chainIndex}`;
-    return await okxGet<LeaderboardEntry>(path);
-  } catch { return []; }
+  const path = `/api/v5/dex/tracker/leaderboard/list?chainIndex=${chainIndex}`;
+  return okxGet<LeaderboardEntry>(path);
 }
 
 // ─── DEX Token ──────────────────────────────────────────────────────────────
@@ -164,10 +151,8 @@ export async function tokenHolders(tokenAddress: string, chainIndex = "196"): Pr
 }
 
 export async function tokenPriceInfo(tokenAddresses: string[], chainId = "196"): Promise<TokenPriceDetail[]> {
-  try {
-    const path = `/api/v5/dex/token/price-info`;
-    return await okxPost<TokenPriceDetail>(path, { chainId, tokenAddresses });
-  } catch { return []; }
+  const path = `/api/v5/dex/token/price-info`;
+  return okxPost<TokenPriceDetail>(path, { chainId, tokenAddresses });
 }
 
 export async function tokenLiquidity(tokenAddress: string, chainIndex = "196"): Promise<LiquidityInfo> {
@@ -260,7 +245,7 @@ export async function broadcastTx(params: {
 // ─── Namespace Export ───────────────────────────────────────────────────────
 
 export const okxClient = {
-  walletPortfolio: { totalValue, allBalances, portfolioOverview, transactionsByAddress },
+  walletPortfolio: { totalValue, allBalances, portfolioOverview },
   security: { tokenScan },
   dexSignal: { smartMoney, signals, leaderboardList },
   dexToken: { info: tokenInfo, holders: tokenHolders, liquidity: tokenLiquidity, priceInfo: tokenPriceInfo },

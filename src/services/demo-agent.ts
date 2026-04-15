@@ -103,12 +103,13 @@ async function logDecisionOnChain(
   actionType: number,
   resultTxHash: string = "0x" + "0".repeat(64)
 ): Promise<string> {
-  // Pin reasoning to IPFS (best-effort — don't crash cycle if Pinata is down/unconfigured)
-  let reasoningURI = "ipfs://unavailable";
+  // Pin reasoning to IPFS — skip on-chain logging if pin fails
+  let reasoningURI: string;
   try {
     reasoningURI = await pinToIPFS(reasoning);
   } catch (err) {
-    console.warn(`[demo-agent] IPFS pin failed, logging without URI: ${err}`);
+    console.warn(`[demo-agent] IPFS pin failed, skipping on-chain log: ${err}`);
+    return `skipped-${Date.now()}`;
   }
   const reasoningHash = keccak256(toBytes(JSON.stringify(reasoning)));
   const decisionId = keccak256(toBytes(`${Date.now()}-${actionType}-${randomBytes(16).toString("hex")}`));
@@ -285,7 +286,9 @@ async function runCycle() {
     emit("agent:swap", { phase: "executing", token: topSignal.tokenAddress, action: topSignal.action });
 
     const NATIVE_OKB = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
-    const swapAmount = "100000000000000000"; // 0.1 OKB
+    // Convert maxPositionSize (in OKB) to wei
+    const positionOkb = parseFloat(agentConfig.maxPositionSize) || 0.1;
+    const swapAmount = BigInt(Math.round(positionOkb * 1e18)).toString();
 
     let swapTxHash = "0x" + "0".repeat(64);
     try {
@@ -334,6 +337,16 @@ async function runCycle() {
 
       await getPublicClient().waitForTransactionReceipt({ hash });
       swapTxHash = hash;
+
+      // Track position
+      state.positions.push({
+        tokenAddress: topSignal.tokenAddress,
+        symbol: topSignal.tokenAddress.slice(0, 10),
+        entryPrice: tokenPrice?.price ?? "0",
+        amount: swapAmount,
+        entryTimestamp: Date.now(),
+        entryTxHash: hash,
+      });
 
       emit("agent:swap", { phase: "complete", txHash: hash, token: topSignal.tokenAddress });
     } catch (err) {

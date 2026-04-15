@@ -59,7 +59,7 @@ export function DecisionTree({ decisions }: { decisions: DecisionNode[] }) {
           };
           const isExpanded = expanded === d.decisionId;
           const shortId = d.decisionId.slice(0, 10) + "..." + d.decisionId.slice(-4);
-          const hasTx = d.resultTxHash !== NULL_HASH;
+          const hasTx = d.resultTxHash != null && d.resultTxHash !== NULL_HASH;
           const ipfsHash = d.reasoningURI?.replace("ipfs://", "") || "";
 
           return (

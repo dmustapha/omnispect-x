@@ -40,13 +40,18 @@ const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 // ─── Main Entry Point ───────────────────────────────────────────────────
 
 export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResponse> {
-  const { agentAddress } = req;
+  const { agentAddress, chainId } = req;
   const startMs = Date.now();
+
+  // Map chainId to chain list for portfolio queries
+  const CHAIN_ID_MAP: Record<number, string> = { 1: "1", 56: "56", 137: "137", 42161: "42161", 196: "196" };
+  const chains = chainId && CHAIN_ID_MAP[chainId] ? CHAIN_ID_MAP[chainId] : "1,56,137,42161,196";
+  const defaultChainIndex = chainId ? String(chainId) : "196";
 
   // Fetch balance data (the richest data source available)
   const [portfolioResult, balancesResult] = await Promise.allSettled([
-    okxClient.walletPortfolio.totalValue(agentAddress),
-    okxClient.walletPortfolio.allBalances(agentAddress),
+    okxClient.walletPortfolio.totalValue(agentAddress, chains),
+    okxClient.walletPortfolio.allBalances(agentAddress, chains),
   ]);
 
   const balanceList = balancesResult.status === "fulfilled" ? balancesResult.value : [];
@@ -95,7 +100,7 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
   const topTokenAddresses = tokenValues
     .filter(t => t.tokenAddress?.toLowerCase() !== NATIVE_TOKEN)
     .slice(0, 5)
-    .map(t => ({ address: t.tokenAddress, chainIndex: t.chainIndex || "196" }));
+    .map(t => ({ address: t.tokenAddress, chainIndex: t.chainIndex || defaultChainIndex }));
 
   const [scanResults, poolResults, overviewResult, agentStatsResult] = await Promise.all([
     // Token security scans (top 5 non-native tokens)
@@ -121,10 +126,11 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
     .map(r => (r as PromiseFulfilledResult<SecurityReport>).value)
     .filter(Boolean);
 
+  // Filter out fallback/synthetic pool data so it doesn't pollute scores
   const poolRisks: PoolRiskAssessment[] = poolResults
     .filter(r => r.status === "fulfilled")
     .map(r => (r as PromiseFulfilledResult<PoolRiskAssessment>).value)
-    .filter(Boolean);
+    .filter(p => p && !p.isFallback);
 
   const overview: PortfolioOverview | null = overviewResult;
 
@@ -186,7 +192,7 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
       chainsQueried: activeChains.length > 0 ? activeChains : Object.values(CHAIN_NAMES),
       totalDataPoints: balanceList.length + securityScans.length + poolRisks.length,
       queryDurationMs,
-      freshness: `${Math.round(queryDurationMs / 1000)}s ago`,
+      freshness: `query took ${Math.round(queryDurationMs / 1000)}s`,
     },
     timestamp: Date.now(),
   };

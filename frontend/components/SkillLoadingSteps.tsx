@@ -17,7 +17,14 @@ export function SkillLoadingSteps({ active, done }: { active: boolean; done: boo
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (active && !done) {
+    if (done) {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = null;
+      setCurrentStep(SKILLS.length);
+      return;
+    }
+
+    if (active) {
       setCurrentStep(0);
       intervalRef.current = setInterval(() => {
         setCurrentStep((prev) => (prev < SKILLS.length - 1 ? prev + 1 : prev));
@@ -26,15 +33,9 @@ export function SkillLoadingSteps({ active, done }: { active: boolean; done: boo
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = null;
     };
   }, [active, done]);
-
-  useEffect(() => {
-    if (done) {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      setCurrentStep(SKILLS.length);
-    }
-  }, [done]);
 
   if (!active && !done) return null;
 
