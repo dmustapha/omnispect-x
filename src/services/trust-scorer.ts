@@ -38,6 +38,18 @@ const BLUE_CHIPS = new Set([
 
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
+// Tokens legitimately priced above $200K (BTC wrapped variants)
+const HIGH_PRICE_TOKENS = new Set([
+  "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599", // WBTC
+  "0xcbcdf9626bc03e24f779434178a73a0b4bad62ed", // cbBTC
+  "0xfef3884b603c33ef8ed4183346e093a173c94da6", // hBTC
+]);
+
+function isKnownHighPriceToken(address?: string): boolean {
+  if (!address) return false;
+  return HIGH_PRICE_TOKENS.has(address.toLowerCase());
+}
+
 // ─── Score Cache (60s TTL) ──────────────────────────────────────────────
 
 const scoreCache = new Map<string, { result: TrustScoreResponse; expiry: number }>();
@@ -73,10 +85,19 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
   const balanceList = balancesResult.status === "fulfilled" ? balancesResult.value : [];
 
   // Filter out obvious spam/dust tokens: tokens with zero balance or zero price
+  // Also filter tokens with absurdly inflated prices (spam tokens with fake $37M/token prices)
+  const MAX_SANE_TOKEN_PRICE = 200_000; // $200K per token — only BTC exceeds this legitimately
+  const MAX_SANE_POSITION_VALUE = 50_000_000_000; // $50B — no single position should exceed this
+
   const meaningfulTokens = balanceList.filter(b => {
     const bal = parseFloat(b.balance || "0");
     const price = parseFloat(b.tokenPrice || "0");
-    return bal > 0 && price > 0;
+    if (bal <= 0 || price <= 0) return false;
+    // Skip tokens with insane prices (spam tokens with fabricated prices)
+    if (price > MAX_SANE_TOKEN_PRICE && !isKnownHighPriceToken(b.tokenAddress)) return false;
+    // Skip positions with absurd total value
+    if (bal * price > MAX_SANE_POSITION_VALUE) return false;
+    return true;
   });
 
   // Compute real portfolio value ourselves (more accurate than API total which includes spam)
@@ -667,7 +688,17 @@ async function generateSummary(
       body: JSON.stringify({
         model: config.anthropic.model,
         max_tokens: 300,
-        system: `You are a blockchain wallet analyst. Given trust score data for a wallet address, write a 2-4 sentence narrative summary of what was found. Be specific about portfolio value, chain activity, token holdings, and risk indicators. Use a professional, concise tone. Do not use markdown. Do not repeat the score number or classification label. Focus on WHAT was found in the wallet and WHY it matters. If the wallet has significant holdings across multiple chains, highlight that. If risk tokens were found, mention them.`,
+        system: `You are a senior blockchain security analyst briefing a client. Given trust score data, write a 3-5 sentence narrative analysis. Rules:
+- Write like you are presenting findings to a fund manager, not generating a database report
+- Every sentence MUST contain at least one specific number (dollar amount, count, percentage) and interpret what it means
+- BANNED phrases: "appears to", "seems to", "likely", "it is worth noting", "overall", "in conclusion"
+- BANNED words: "robust", "comprehensive", "landscape", "leverage", "ecosystem" (as filler)
+- Start with the most significant finding, not a generic intro
+- If the wallet holds value across multiple chains, name the chains and amounts
+- If risk tokens exist, state how many and what percentage of portfolio they represent
+- If the wallet is an AI agent, describe its on-chain decision history
+- Do NOT use markdown. Do NOT repeat the score number or classification label. Do NOT use em dashes.
+- Tone: confident, direct, specific. You are an analyst who has seen thousands of wallets.`,
         messages: [{ role: "user", content: prompt }],
       }),
       signal: controller.signal,
