@@ -49,6 +49,12 @@ export interface TrustScoreMetadata {
   freshness: string;
 }
 
+export interface AgentProfile {
+  isAgent: boolean;
+  totalDecisions: number;
+  registeredOnChain: boolean;
+}
+
 export interface TrustScoreResponse {
   address: string;
   overallScore: number; // 0-100
@@ -60,6 +66,7 @@ export interface TrustScoreResponse {
     behavioralConsistency: DimensionScore;
   };
   uniswapRisk: UniswapRiskAssessment;
+  agentProfile: AgentProfile;
   recommendations: string[];
   metadata: TrustScoreMetadata;
   timestamp: number;
