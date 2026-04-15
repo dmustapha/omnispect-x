@@ -1,10 +1,54 @@
 import type { Context, Next } from "hono";
 import { createHmac } from "crypto";
+import { createPublicClient, http, defineChain, parseAbiItem, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import type { Hex } from "viem";
 import { config } from "../config";
 
-const FACILITATOR_URL = config.x402.facilitatorUrl; // https://web3.okx.com/api/v6/x402
+// Derive payTo address once (not on every request)
+const payToAddress = config.agentWallet.privateKey
+  ? privateKeyToAccount(config.agentWallet.privateKey as Hex).address
+  : null;
+
+// ─── On-Chain Verification (viem) ──────────────────────────────────────────
+
+const xlayer = defineChain({
+  id: 196,
+  name: "X Layer",
+  nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
+  rpcUrls: { default: { http: [config.xlayer.rpcUrl] } },
+});
+
+const publicClient = createPublicClient({ chain: xlayer, transport: http(config.xlayer.rpcUrl) });
+
+const TRANSFER_EVENT = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
+
+async function verifyPaymentOnChain(txHash: string): Promise<boolean> {
+  try {
+    const receipt = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
+
+    if (receipt.status !== "success") return false;
+
+    const usdgAddress = config.x402.paymentTokenAddress.toLowerCase();
+    const requiredAmount = BigInt(config.x402.pricePerReport);
+
+    for (const log of receipt.logs) {
+      if (log.address.toLowerCase() !== usdgAddress) continue;
+      if (!log.topics[0] || log.topics[0] !== "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef") continue;
+
+      // Decode Transfer(from, to, value)
+      const to = log.topics[2] ? ("0x" + log.topics[2].slice(26)) as `0x${string}` : null;
+      const value = log.data ? BigInt(log.data) : 0n;
+
+      if (to && payToAddress && to.toLowerCase() === payToAddress.toLowerCase() && value >= requiredAmount) {
+        return true;
+      }
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 // ─── HMAC for OKX facilitator calls ────────────────────────────────────────
 
@@ -65,9 +109,19 @@ async function settlePayment(paymentHeader: string): Promise<boolean> {
 
 export function x402Gate() {
   return async (c: Context, next: Next) => {
+    // Demo mode bypass — OKX x402 facilitator endpoints not yet available
+    if (process.env.X402_DEMO_MODE === "true") {
+      await next();
+      return;
+    }
+
     const paymentHeader = c.req.header("X-Payment") || c.req.header("x-payment");
 
     if (!paymentHeader) {
+      if (!payToAddress) {
+        return c.json({ error: "Payment not configured — PRIVATE_KEY missing" }, 503);
+      }
+
       // Return 402 with payment requirements
       const requirements = {
         scheme: "exact",
@@ -76,9 +130,7 @@ export function x402Gate() {
         resource: c.req.url,
         description: "Premium Omnispect-X Trust Report",
         mimeType: "application/json",
-        payToAddress: config.agentWallet.privateKey
-          ? privateKeyToAccount(config.agentWallet.privateKey as Hex).address
-          : "0x0000000000000000000000000000000000000000",
+        payToAddress,
         requiredDeadlineSeconds: 300,
         extra: {
           name: "Omnispect-X",
@@ -95,8 +147,14 @@ export function x402Gate() {
       );
     }
 
-    // Verify payment
-    const valid = await verifyPayment(paymentHeader);
+    // Verify payment: try on-chain first, then OKX facilitator
+    let valid = false;
+    if (paymentHeader.startsWith("0x") && paymentHeader.length === 66) {
+      valid = await verifyPaymentOnChain(paymentHeader);
+    }
+    if (!valid) {
+      valid = await verifyPayment(paymentHeader);
+    }
     if (!valid) {
       return c.json({ error: "Invalid payment" }, 402);
     }
@@ -104,7 +162,10 @@ export function x402Gate() {
     // Process request
     await next();
 
-    // Settle payment after successful response
-    await settlePayment(paymentHeader);
+    // Settle payment after successful response (async post-response — intentional for x402 flow)
+    const settled = await settlePayment(paymentHeader);
+    if (!settled) {
+      console.error(`[x402] Settlement failed for payment: ${paymentHeader.slice(0, 32)}...`);
+    }
   };
 }

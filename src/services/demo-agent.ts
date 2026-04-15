@@ -2,6 +2,7 @@ import { createWalletClient, createPublicClient, http, keccak256, toBytes, defin
 import { privateKeyToAccount } from "viem/accounts";
 import { okxClient } from "../lib/okx-client";
 import { scoreTrust } from "./trust-scorer";
+import { generateReasoning } from "./llm-reasoning";
 import { broadcast } from "../server/ws";
 import { config } from "../config";
 import type { AgentConfig, AgentState, CycleEvent, SmartMoneyActivity } from "../types";
@@ -47,20 +48,34 @@ const xlayer = defineChain({
   rpcUrls: { default: { http: [config.xlayer.rpcUrl] } },
 });
 
-// ─── Wallet Setup ───────────────────────────────────────────────────────────
+// ─── Lazy Wallet Setup (avoids crash on missing PRIVATE_KEY) ────────────────
 
-const account = privateKeyToAccount(config.agentWallet.privateKey as Hex);
+function lazyAccount() {
+  if (!config.agentWallet.privateKey) throw new Error("PRIVATE_KEY env var is required to run the demo agent");
+  return privateKeyToAccount(config.agentWallet.privateKey as Hex);
+}
 
-const walletClient = createWalletClient({
-  account,
-  chain: xlayer,
-  transport: http(config.xlayer.rpcUrl),
-});
+let _memo: {
+  account: ReturnType<typeof privateKeyToAccount>;
+  wallet: ReturnType<typeof createWalletClient<ReturnType<typeof http>, typeof xlayer, ReturnType<typeof privateKeyToAccount>>>;
+  public: ReturnType<typeof createPublicClient<ReturnType<typeof http>, typeof xlayer>>;
+} | null = null;
 
-const publicClient = createPublicClient({
-  chain: xlayer,
-  transport: http(config.xlayer.rpcUrl),
-});
+function ensureWallet() {
+  if (!_memo) {
+    const account = lazyAccount();
+    _memo = {
+      account,
+      wallet: createWalletClient({ account, chain: xlayer, transport: http(config.xlayer.rpcUrl) }),
+      public: createPublicClient({ chain: xlayer, transport: http(config.xlayer.rpcUrl) }),
+    };
+  }
+  return _memo;
+}
+
+function getAccount() { return ensureWallet().account; }
+function getWalletClient() { return ensureWallet().wallet; }
+function getPublicClient() { return ensureWallet().public; }
 
 const contractAddress = config.xlayer.lineageLoggerAddress as `0x${string}`;
 
@@ -87,13 +102,18 @@ async function logDecisionOnChain(
   actionType: number,
   resultTxHash: string = "0x" + "0".repeat(64)
 ): Promise<string> {
-  // Pin reasoning to IPFS
-  const reasoningURI = await pinToIPFS(reasoning);
+  // Pin reasoning to IPFS (best-effort — don't crash cycle if Pinata is down/unconfigured)
+  let reasoningURI = "ipfs://unavailable";
+  try {
+    reasoningURI = await pinToIPFS(reasoning);
+  } catch (err) {
+    console.warn(`[demo-agent] IPFS pin failed, logging without URI: ${err}`);
+  }
   const reasoningHash = keccak256(toBytes(JSON.stringify(reasoning)));
   const decisionId = keccak256(toBytes(`${Date.now()}-${actionType}-${Math.random()}`));
 
   // Write to contract
-  const hash = await walletClient.writeContract({
+  const hash = await getWalletClient().writeContract({
     address: contractAddress,
     abi: LINEAGE_WRITE_ABI,
     functionName: "logDecision",
@@ -106,7 +126,7 @@ async function logDecisionOnChain(
     ],
   });
 
-  await publicClient.waitForTransactionReceipt({ hash });
+  await getPublicClient().waitForTransactionReceipt({ hash });
   return decisionId;
 }
 
@@ -147,28 +167,55 @@ function emit(type: CycleEvent["type"], data: Record<string, unknown>) {
 
 async function runCycle() {
   if (!state.running) return;
+
+  // Circuit breaker check
+  if (state.consecutiveLosses >= agentConfig.circuitBreaker.maxConsecutiveLosses) {
+    emit("agent:error", { phase: "circuit_breaker", reason: "max_consecutive_losses", losses: state.consecutiveLosses });
+    stopAgent();
+    return;
+  }
+
   state.currentCycle++;
 
   try {
     // ── Phase 1: Signal Collection ──
     emit("agent:signal", { phase: "collecting", cycle: state.currentCycle });
 
-    const smartMoneyData = await okxClient.dexSignal.smartMoney("196", 10);
+    let smartMoneyData: SmartMoneyActivity[] = [];
+    let signalSource = "live";
+    try {
+      // Try ETH mainnet first (most smart money data), then cross-chain
+      smartMoneyData = await okxClient.dexSignal.smartMoney("1", 10);
+    } catch {
+      try {
+        smartMoneyData = await okxClient.dexSignal.smartMoney("56", 10);
+      } catch {
+        // All API calls failed — use demo signals
+      }
+    }
+
     if (smartMoneyData.length === 0) {
-      emit("agent:signal", { phase: "no_signals", cycle: state.currentCycle });
-      return scheduleCycle();
+      signalSource = "demo";
+      smartMoneyData = [
+        { address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", tokenAddress: "0x5a3e6a77ba2f983ec0d371ea3b475f8bc0811ad5", action: "buy", amount: "15000", ts: Date.now() },
+        { address: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B", tokenAddress: "0x8c4037faa47b089e42a02f5c6973e2463e2e2a31", action: "buy", amount: "8500", ts: Date.now() },
+        { address: "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18", tokenAddress: "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", action: "sell", amount: "22000", ts: Date.now() },
+      ];
+      emit("agent:signal", { phase: "fallback", reason: "api_unavailable", source: "demo", cycle: state.currentCycle });
     }
 
     // Pick strongest signal (highest amount)
     const topSignal = smartMoneyData.sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))[0];
 
-    // Log signal collection
-    await logDecisionOnChain(
-      { phase: "signal", signals: smartMoneyData.slice(0, 3), topSignal },
-      0 // SIGNAL_COLLECTED
-    );
+    // Log signal collection (best-effort — don't crash cycle on logging failure)
+    try {
+      await logDecisionOnChain(
+        { phase: "signal", signals: smartMoneyData.slice(0, 3), topSignal },
+        0 // SIGNAL_COLLECTED
+      );
+    } catch (e) { console.warn(`[demo-agent] On-chain log failed (signal): ${e}`); }
 
-    emit("agent:signal", { phase: "collected", topSignal, signalCount: smartMoneyData.length });
+    emit("agent:signal", { phase: "collected", topSignal, signalCount: smartMoneyData.length, source: signalSource });
 
     // ── Phase 2: Analysis ──
     emit("agent:analysis", { phase: "analyzing", token: topSignal.tokenAddress });
@@ -181,14 +228,29 @@ async function runCycle() {
     const tokenPrice = priceData.status === "fulfilled" ? priceData.value : null;
     const klines = marketData.status === "fulfilled" ? marketData.value : [];
 
-    const confidence = analyzeSignal(topSignal, tokenPrice, klines);
+    let confidence: number;
+    let reasoning: string | undefined;
+    try {
+      const llmResult = await generateReasoning({
+        signal: topSignal,
+        priceInfo: tokenPrice,
+        klines,
+      });
+      confidence = llmResult.confidence;
+      reasoning = llmResult.reasoning;
+    } catch {
+      // Fallback to algorithmic analysis
+      confidence = analyzeSignal(topSignal, tokenPrice, klines);
+    }
 
-    await logDecisionOnChain(
-      { phase: "analysis", token: topSignal.tokenAddress, confidence, price: tokenPrice, klineCount: klines.length },
-      1 // ANALYSIS_COMPLETE
-    );
+    try {
+      await logDecisionOnChain(
+        { phase: "analysis", token: topSignal.tokenAddress, confidence, reasoning, price: tokenPrice, klineCount: klines.length },
+        1 // ANALYSIS_COMPLETE
+      );
+    } catch (e) { console.warn(`[demo-agent] On-chain log failed (analysis): ${e}`); }
 
-    emit("agent:analysis", { phase: "complete", confidence, token: topSignal.tokenAddress });
+    emit("agent:analysis", { phase: "complete", confidence, reasoning, token: topSignal.tokenAddress });
 
     if (confidence < agentConfig.confidenceFloor) {
       emit("agent:analysis", { phase: "skipped", reason: "confidence_below_floor", confidence, floor: agentConfig.confidenceFloor });
@@ -196,14 +258,16 @@ async function runCycle() {
     }
 
     // ── Phase 3: Trust Gate ──
-    emit("agent:trust-check", { phase: "checking", target: topSignal.tokenAddress });
+    emit("agent:trust-check", { phase: "checking", target: topSignal.address });
 
     const trustReport = await scoreTrust({ agentAddress: topSignal.address });
 
-    await logDecisionOnChain(
-      { phase: "trust_check", target: topSignal.address, score: trustReport.overallScore, classification: trustReport.classification },
-      2 // TRUST_CHECK
-    );
+    try {
+      await logDecisionOnChain(
+        { phase: "trust_check", target: topSignal.address, score: trustReport.overallScore, classification: trustReport.classification },
+        2 // TRUST_CHECK
+      );
+    } catch (e) { console.warn(`[demo-agent] On-chain log failed (trust): ${e}`); }
 
     emit("agent:trust-check", {
       phase: "complete",
@@ -230,36 +294,46 @@ async function runCycle() {
         toTokenAddress: topSignal.tokenAddress,
         amount: swapAmount,
         slippage: "0.01",
-        userWalletAddress: account.address,
+        userWalletAddress: getAccount().address,
       });
 
-      const hash = await walletClient.sendTransaction({
+      const hash = await getWalletClient().sendTransaction({
         to: swapData.tx.to as `0x${string}`,
         data: swapData.tx.data as `0x${string}`,
         value: BigInt(swapData.tx.value),
       });
 
-      await publicClient.waitForTransactionReceipt({ hash });
+      await getPublicClient().waitForTransactionReceipt({ hash });
       swapTxHash = hash;
 
       emit("agent:swap", { phase: "complete", txHash: hash, token: topSignal.tokenAddress });
     } catch (err) {
       emit("agent:error", { phase: "swap_failed", error: String(err) });
+      try {
+        await logDecisionOnChain(
+          { phase: "swap_failed", token: topSignal.tokenAddress, error: String(err), confidence },
+          6, // EMERGENCY_STOP
+        );
+      } catch (logErr) { console.warn(`[demo-agent] Failed to log swap failure on-chain: ${logErr}`); }
+      return scheduleCycle();
     }
 
     // ── Phase 5: Log Lineage ──
-    const lineageId = await logDecisionOnChain(
-      {
-        phase: "swap_executed",
-        token: topSignal.tokenAddress,
-        amount: swapAmount,
-        confidence,
-        trustScore: trustReport.overallScore,
-        signals: [topSignal],
-      },
-      3, // SWAP_EXECUTED
-      swapTxHash
-    );
+    let lineageId: string | null = null;
+    try {
+      lineageId = await logDecisionOnChain(
+        {
+          phase: "swap_executed",
+          token: topSignal.tokenAddress,
+          amount: swapAmount,
+          confidence,
+          trustScore: trustReport.overallScore,
+          signals: [topSignal],
+        },
+        3, // SWAP_EXECUTED
+        swapTxHash
+      );
+    } catch (e) { console.warn(`[demo-agent] On-chain log failed (lineage): ${e}`); }
 
     state.lastDecisionId = lineageId;
     emit("agent:lineage-logged", { phase: "logged", decisionId: lineageId, txHash: swapTxHash });
@@ -315,24 +389,24 @@ export async function startAgent(overrides?: Partial<AgentConfig>) {
   state = { running: true, currentCycle: 0, totalPnl: 0, consecutiveLosses: 0, lastDecisionId: null, positions: [] };
 
   // Ensure agent is registered
-  const isReg = await publicClient.readContract({
+  const isReg = await getPublicClient().readContract({
     address: contractAddress,
     abi: LINEAGE_WRITE_ABI,
     functionName: "isRegistered",
-    args: [account.address],
+    args: [getAccount().address],
   });
 
   if (!isReg) {
-    const hash = await walletClient.writeContract({
+    const hash = await getWalletClient().writeContract({
       address: contractAddress,
       abi: LINEAGE_WRITE_ABI,
       functionName: "registerAgent",
       args: ["Omnispect-X Demo Agent v1"],
     });
-    await publicClient.waitForTransactionReceipt({ hash });
+    await getPublicClient().waitForTransactionReceipt({ hash });
   }
 
-  emit("agent:cycle-complete", { phase: "started", address: account.address });
+  emit("agent:cycle-complete", { phase: "started", address: getAccount().address });
   runCycle();
 }
 

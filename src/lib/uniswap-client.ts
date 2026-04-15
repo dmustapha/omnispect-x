@@ -1,4 +1,5 @@
 import type { UniswapQuote, PoolRiskAssessment } from "../types";
+import { config } from "../config";
 
 const UNISWAP_API = "https://trade-api.gateway.uniswap.org";
 const X_LAYER_CHAIN_ID = 196;
@@ -13,9 +14,12 @@ export async function getQuote(params: {
   chainId?: number;
   swapper?: string;
 }): Promise<UniswapQuote> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (config.uniswap.apiKey) headers["x-api-key"] = config.uniswap.apiKey;
+
   const res = await fetch(`${UNISWAP_API}/v1/quote`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
       type: "EXACT_INPUT",
       tokenIn: params.tokenIn,

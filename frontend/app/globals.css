@@ -1,3 +1,371 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ── Clash Display (Fontshare CDN) ───────────────────────── */
+@import url('https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap');
+
+/* ── Omnispect-X Design System — Glass Depth ─────────────── */
+
+@layer base {
+  :root {
+    --ox-bg: #0D0705;
+    --ox-surface: #170F0C;
+    --ox-card: #251D1A;
+    --ox-elevated: #302A28;
+    --ox-border: rgba(61, 46, 36, 0.35);
+    --ox-border-active: rgba(92, 58, 30, 0.5);
+    --ox-border-glow: rgba(242, 140, 24, 0.15);
+    --ox-cyan: #F28C18;
+    --ox-cyan-dim: #AD6A1F;
+    --ox-purple: #D63F5A;
+    --ox-purple-dim: #A03048;
+    --ox-safe: #00e68a;
+    --ox-caution: #ffb224;
+    --ox-danger: #ff4757;
+    --ox-text-primary: #EDE8E3;
+    --ox-text-secondary: #9E9590;
+    --ox-text-muted: #7A746E;
+  }
+
+  html {
+    color-scheme: dark;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background: var(--ox-bg);
+    color: var(--ox-text-primary);
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background: rgba(242, 140, 24, 0.2);
+    color: #fff;
+  }
+}
+
+/* ── Scrollbar ──────────────────────────────────────────── */
+
+@layer base {
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--ox-border); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ox-border-active); }
+}
+
+/* ── Glass System (4 tiers) ─────────────────────────────── */
+
+@layer components {
+  .ox-glass-12 {
+    background: rgba(37, 29, 26, 0.45);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--ox-border-glow);
+  }
+  .ox-glass-16 {
+    background: rgba(37, 29, 26, 0.5);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--ox-border-glow);
+  }
+  .ox-glass-20 {
+    background: rgba(23, 15, 12, 0.55);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--ox-border-glow);
+  }
+  .ox-glass-24 {
+    background: rgba(13, 7, 5, 0.65);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid var(--ox-border-glow);
+  }
+
+  .ox-glass-edge {
+    box-shadow:
+      inset 0 1px 0 0 rgba(237, 195, 140, 0.06),
+      inset 1px 0 0 0 rgba(237, 195, 140, 0.03),
+      0 8px 32px -8px rgba(13, 7, 5, 0.5);
+  }
+  .ox-glass-edge-strong {
+    box-shadow:
+      inset 0 1px 0 0 rgba(237, 195, 140, 0.1),
+      inset 1px 0 0 0 rgba(237, 195, 140, 0.05),
+      0 16px 48px -12px rgba(13, 7, 5, 0.6),
+      0 0 0 1px rgba(242, 140, 24, 0.08);
+  }
+  .ox-glass-lift {
+    transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+  }
+  .ox-glass-lift:hover {
+    transform: translateY(-2px);
+    box-shadow:
+      inset 0 1px 0 0 rgba(237, 195, 140, 0.12),
+      0 20px 60px -16px rgba(13, 7, 5, 0.7),
+      0 0 0 1px rgba(242, 140, 24, 0.18);
+    border-color: rgba(242, 140, 24, 0.25);
+  }
+
+  /* ── Background Orbs ───────────────────────────────────── */
+  .ox-orb {
+    position: fixed;
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .ox-orb-amber {
+    width: 420px; height: 420px;
+    background: radial-gradient(circle, rgba(242, 140, 24, 0.25) 0%, transparent 70%);
+    top: -80px; left: -60px;
+    filter: blur(60px);
+  }
+  .ox-orb-rose {
+    width: 360px; height: 360px;
+    background: radial-gradient(circle, rgba(214, 63, 90, 0.18) 0%, transparent 70%);
+    top: 30%; right: -40px;
+    filter: blur(70px);
+  }
+  .ox-orb-warm {
+    width: 320px; height: 320px;
+    background: radial-gradient(circle, rgba(173, 106, 31, 0.2) 0%, transparent 70%);
+    bottom: 10%; left: 5%;
+    filter: blur(55px);
+  }
+
+  /* ── Sidebar ───────────────────────────────────────────── */
+  .ox-sidebar {
+    position: fixed;
+    left: 0; top: 0;
+    width: 220px;
+    height: 100%;
+    z-index: 50;
+    display: flex;
+    flex-direction: column;
+    padding: 1.25rem 0.75rem;
+    background: rgba(13, 7, 5, 0.7);
+    backdrop-filter: blur(28px);
+    -webkit-backdrop-filter: blur(28px);
+    border-right: 1px solid var(--ox-border-glow);
+  }
+  .ox-sidebar-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    border-radius: 10px;
+    color: var(--ox-text-secondary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: color 0.2s ease, background-color 0.2s ease;
+  }
+  .ox-sidebar-item:hover {
+    color: var(--ox-text-primary);
+    background: rgba(242, 140, 24, 0.06);
+  }
+  .ox-sidebar-item[data-active="true"] {
+    color: var(--ox-cyan);
+    background: rgba(242, 140, 24, 0.1);
+  }
+
+  /* ── Card variants ─────────────────────────────────────── */
+  .ox-card {
+    background: var(--ox-card);
+    border: 1px solid var(--ox-border);
+    border-radius: 12px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .ox-card:hover {
+    border-color: var(--ox-border-active);
+  }
+
+  .ox-card-glow {
+    background: var(--ox-card);
+    border: 1px solid var(--ox-border);
+    border-radius: 12px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .ox-card-glow:hover {
+    border-color: rgba(242, 140, 24, 0.3);
+    box-shadow: 0 0 20px rgba(242, 140, 24, 0.08);
+  }
+
+  /* ── Input ─────────────────────────────────────────────── */
+  .ox-input {
+    background: var(--ox-surface);
+    border: 1px solid var(--ox-border);
+    border-radius: 8px;
+    color: var(--ox-text-primary);
+    font-family: var(--font-jetbrains), ui-monospace, monospace;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+  .ox-input::placeholder { color: var(--ox-text-muted); }
+  .ox-input:focus {
+    outline: none;
+    border-color: var(--ox-cyan);
+    box-shadow: 0 0 0 3px rgba(242, 140, 24, 0.1);
+  }
+
+  /* ── Buttons ───────────────────────────────────────────── */
+  .ox-btn-primary {
+    background: linear-gradient(135deg, var(--ox-cyan-dim), var(--ox-cyan));
+    color: var(--ox-bg);
+    font-weight: 600;
+    border-radius: 10px;
+    transition: opacity 0.2s ease, transform 0.1s ease;
+  }
+  .ox-btn-primary:hover { opacity: 0.9; }
+  .ox-btn-primary:active { transform: scale(0.98); }
+  .ox-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .ox-btn-secondary {
+    background: transparent;
+    border: 1px solid var(--ox-border);
+    color: var(--ox-text-secondary);
+    border-radius: 10px;
+    transition: border-color 0.2s ease, color 0.2s ease;
+  }
+  .ox-btn-secondary:hover {
+    border-color: var(--ox-cyan);
+    color: var(--ox-cyan);
+  }
+
+  /* ── Badges ────────────────────────────────────────────── */
+  .ox-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .ox-badge-safe { background: rgba(0, 230, 138, 0.12); color: var(--ox-safe); border: 1px solid rgba(0, 230, 138, 0.2); }
+  .ox-badge-caution { background: rgba(255, 178, 36, 0.12); color: var(--ox-caution); border: 1px solid rgba(255, 178, 36, 0.2); }
+  .ox-badge-danger { background: rgba(255, 71, 87, 0.12); color: var(--ox-danger); border: 1px solid rgba(255, 71, 87, 0.2); }
+
+  /* ── Headings ──────────────────────────────────────────── */
+  .ox-heading {
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ox-text-muted);
+  }
+
+  /* ── Decorative ────────────────────────────────────────── */
+  .ox-dots {
+    background-image: radial-gradient(circle, rgba(242, 140, 24, 0.04) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+
+  .ox-glow-line {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--ox-cyan-dim), transparent);
+    opacity: 0.3;
+  }
+
+  .ox-line-accent {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--ox-border-glow), transparent);
+  }
+
+  /* ── Stats ─────────────────────────────────────────────── */
+  .ox-stat {
+    background: var(--ox-card);
+    border: 1px solid var(--ox-border);
+    border-radius: 10px;
+    padding: 16px 20px;
+  }
+  .ox-stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    font-family: var(--font-jetbrains), ui-monospace, monospace;
+    color: var(--ox-text-primary);
+    line-height: 1;
+  }
+  .ox-stat-label {
+    font-size: 12px;
+    color: var(--ox-text-muted);
+    margin-top: 4px;
+  }
+}
+
+/* ── Animations (MI=5: IntersectionObserver allowed) ────── */
+
+@layer utilities {
+  .ox-animate-in {
+    animation: ox-fade-in 0.4s ease-out, ox-slide-up 0.4s ease-out;
+  }
+}
+
+@keyframes ox-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes ox-slide-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ox-pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(1.4); }
+}
+@keyframes ox-ring-fill {
+  from { stroke-dashoffset: 251; }
+}
+
+/* ── Score Ring ──────────────────────────────────────────── */
+.ox-score-ring-track { stroke: rgba(61, 46, 36, 0.3); }
+.ox-score-ring-fill {
+  stroke: var(--ox-cyan);
+  filter: drop-shadow(0 0 6px rgba(242, 140, 24, 0.4));
+  animation: ox-ring-fill 1.5s ease-out forwards;
+}
+
+/* ── Mobile Sidebar → Bottom Bar ─────────────────────────── */
+@media (max-width: 767px) {
+  .ox-sidebar {
+    position: fixed;
+    top: auto; bottom: 0; left: 0;
+    width: 100%; height: auto;
+    flex-direction: row;
+    padding: 0.5rem;
+    justify-content: space-around;
+    border-right: none;
+    border-top: 1px solid var(--ox-border-glow);
+  }
+  .ox-sidebar .ox-sidebar-logo,
+  .ox-sidebar .ox-sidebar-footer { display: none; }
+  .ox-sidebar .ox-sidebar-nav {
+    display: flex;
+    flex-direction: row;
+    gap: 0;
+    width: 100%;
+    justify-content: space-around;
+  }
+  .ox-sidebar-item {
+    flex-direction: column;
+    gap: 0.2rem;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.7rem;
+  }
+  .ox-sidebar-item .ox-nav-label { display: none; }
+  .ox-main-content { margin-left: 0 !important; padding-bottom: 72px; }
+  .ox-orb-amber { width: 250px; height: 250px; top: -40px; left: -30px; }
+  .ox-orb-rose { width: 200px; height: 200px; right: -50px; }
+  .ox-orb-warm { width: 180px; height: 180px; }
+}
+
+/* ── Reduced Motion ─────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

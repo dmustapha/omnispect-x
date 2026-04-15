@@ -6,8 +6,10 @@ const clients = new Set<WebSocket>();
 
 export function addClient(ws: WebSocket) {
   clients.add(ws);
-  ws.addEventListener("close", () => clients.delete(ws));
-  ws.addEventListener("error", () => clients.delete(ws));
+}
+
+export function removeClient(ws: WebSocket) {
+  clients.delete(ws);
 }
 
 export function broadcast(event: CycleEvent) {

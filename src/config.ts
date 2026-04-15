@@ -16,6 +16,7 @@ export const config: AppConfig = {
   uniswap: {
     tradingApiUrl: "https://trade-api.gateway.uniswap.org",
     swapRouter02: "0x4f0c28f5926afda16bf2506d5d9e57ea190f9bca",
+    apiKey: process.env.UNISWAP_API_KEY || "",
   },
   ipfs: {
     pinataJwt: process.env.PINATA_JWT || "",
@@ -24,9 +25,14 @@ export const config: AppConfig = {
   agentWallet: {
     privateKey: process.env.PRIVATE_KEY || "",
   },
+  corsOrigin: process.env.CORS_ORIGIN || "http://localhost:3000",
   x402: {
     paymentTokenAddress: "0x4ae46a509f6b1d9056937ba4500cb143933d2dc8", // USDG
     pricePerReport: "10000000000000000", // 0.01 USDG (18 decimals)
     facilitatorUrl: "https://web3.okx.com/api/v6/x402",
+  },
+  anthropic: {
+    apiKey: process.env.ANTHROPIC_API_KEY || "",
+    model: process.env.LLM_MODEL || "claude-haiku-4-5-20251001",
   },
 };
