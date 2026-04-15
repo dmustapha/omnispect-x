@@ -156,7 +156,19 @@ export async function getReasoningText(ipfsUri: string): Promise<ReasoningPayloa
 
 // ─── Contract Readers ───────────────────────────────────────────────────────
 
-function mapDecision(raw: any): DecisionNode {
+interface RawDecisionTuple {
+  agent: string;
+  decisionId: string;
+  prevDecisionId: string;
+  reasoningHash: string;
+  reasoningURI: string;
+  actionType: number | bigint;
+  resultTxHash: string;
+  timestamp: number | bigint;
+  blockNumber: number | bigint;
+}
+
+function mapDecision(raw: RawDecisionTuple): DecisionNode {
   return {
     agent: raw.agent,
     decisionId: raw.decisionId,
@@ -186,7 +198,7 @@ export async function getDecisionChain(
     BigInt(limit),
   ]);
 
-  const decisions = (raw as any[]).map(mapDecision);
+  const decisions = (raw as RawDecisionTuple[]).map(mapDecision);
 
   // Enrich with IPFS reasoning (parallel, best-effort)
   const enriched = await Promise.allSettled(

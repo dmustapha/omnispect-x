@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { RadarChart } from "./RadarChart";
+import dynamic from "next/dynamic";
+
+const RadarChart = dynamic(() => import("./RadarChart").then((m) => m.RadarChart), { ssr: false });
 
 interface Finding {
   category: string;
@@ -69,8 +71,8 @@ export function TrustScoreCard({ data }: { data: TrustScoreData }) {
   const [expandedDim, setExpandedDim] = useState<string | null>(null);
   const [showMethodology, setShowMethodology] = useState(false);
 
-  // Simple percentile estimate based on score
-  const percentile = data.overallScore >= 80 ? 90 : data.overallScore >= 60 ? 70 : data.overallScore >= 40 ? 40 : 15;
+  // Score tier label (no fake percentile)
+  const tier = data.overallScore >= 80 ? "Strong" : data.overallScore >= 60 ? "Moderate" : data.overallScore >= 40 ? "Below average" : "Weak";
 
   return (
     <div className="ox-glass-16 ox-glass-edge-strong rounded-2xl overflow-hidden">
@@ -130,9 +132,9 @@ export function TrustScoreCard({ data }: { data: TrustScoreData }) {
             </div>
           )}
 
-          {/* Comparative context */}
+          {/* Score tier */}
           <p className="text-[11px] text-ox-text-muted mt-2">
-            Score higher than ~{percentile}% of analyzed wallets
+            Trust level: {tier}
           </p>
 
           {/* Dimension bars with expand */}
@@ -258,19 +260,33 @@ export function TrustScoreCard({ data }: { data: TrustScoreData }) {
       {/* Recommendations */}
       {data.recommendations.length > 0 && (
         <div className="border-t border-ox-border/30 px-6 py-4">
-          <h3 className="ox-heading mb-2">Recommendations</h3>
-          <ul className="space-y-1.5">
-            {data.recommendations.map((rec, i) => (
-              <li key={i} className="flex items-start gap-2 text-sm text-ox-text-secondary">
-                <span className="text-ox-cyan mt-0.5 shrink-0">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="9 18 15 12 9 6" />
-                  </svg>
-                </span>
-                {rec}
-              </li>
-            ))}
-          </ul>
+          <div className={`rounded-xl p-4 border ${
+            data.classification === "BLOCKLIST"
+              ? "bg-ox-danger/8 border-ox-danger/25"
+              : data.classification === "CAUTION"
+                ? "bg-ox-caution/8 border-ox-caution/25"
+                : "bg-ox-safe/8 border-ox-safe/20"
+          }`}>
+            <div className="flex items-center gap-2 mb-3">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={style.color} strokeWidth="2">
+                <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <h3 className="text-sm font-semibold uppercase tracking-wide" style={{ color: style.color }}>
+                Recommendations
+              </h3>
+            </div>
+            <ul className="space-y-2">
+              {data.recommendations.map((rec, i) => (
+                <li key={i} className="flex items-start gap-2.5 text-sm text-ox-text-primary">
+                  <span className="mt-1 shrink-0 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold" style={{ background: `color-mix(in srgb, ${style.color} 15%, transparent)`, color: style.color }}>
+                    {i + 1}
+                  </span>
+                  {rec}
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       )}
 
@@ -283,7 +299,7 @@ export function TrustScoreCard({ data }: { data: TrustScoreData }) {
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`transition-transform ${showMethodology ? "rotate-180" : ""}`}>
             <polyline points="6 9 12 15 18 9" />
           </svg>
-          How is this score calculated?
+          How is this score calculated? (click to expand)
         </button>
 
         {showMethodology && (

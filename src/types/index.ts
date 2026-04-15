@@ -366,6 +366,7 @@ export interface AppConfig {
     pinataJwt: string;
     gateway: string;
   };
+  agentSecret: string;
   corsOrigin: string;
   agentWallet: {
     privateKey: string;

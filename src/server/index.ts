@@ -6,7 +6,7 @@ import { demoAgent } from "../services/demo-agent";
 import { x402Gate } from "../middleware/x402";
 import { addClient, removeClient, getClientCount } from "./ws";
 import { config } from "../config";
-import type { Context } from "hono";
+import type { Context, Next } from "hono";
 import type { TrustScoreRequest } from "../types";
 
 // ─── Startup Validation ────────────────────────────────────────────────────
@@ -35,9 +35,50 @@ function validateChainId(raw: string): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+// ─── Rate Limiter ────────────────────────────────────────────────────────────
+
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT = 30; // requests per window
+const RATE_WINDOW = 60_000; // 1 minute
+
+function rateLimit() {
+  return async (c: Context, next: Next) => {
+    const ip = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "unknown";
+    const now = Date.now();
+    const entry = rateLimitMap.get(ip);
+
+    if (!entry || now > entry.resetAt) {
+      rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_WINDOW });
+    } else {
+      entry.count++;
+      if (entry.count > RATE_LIMIT) {
+        return c.json({ error: "Rate limit exceeded. Try again later." }, 429);
+      }
+    }
+
+    await next();
+  };
+}
+
+// ─── Agent Auth ──────────────────────────────────────────────────────────────
+
+function agentAuth() {
+  return async (c: Context, next: Next) => {
+    // If AGENT_SECRET is set, require it for agent control routes
+    if (config.agentSecret) {
+      const token = c.req.header("x-agent-secret");
+      if (token !== config.agentSecret) {
+        return c.json({ error: "Unauthorized — invalid or missing agent secret" }, 401);
+      }
+    }
+    await next();
+  };
+}
+
 // ─── Middleware ──────────────────────────────────────────────────────────────
 
 app.use("*", cors({ origin: config.corsOrigin }));
+app.use("/api/*", rateLimit());
 
 // ─── Health Check ───────────────────────────────────────────────────────────
 
@@ -110,8 +151,10 @@ app.get("/api/lineage/:address", async (c) => {
   const address = c.req.param("address");
   const badAddr = validateAddress(c, address);
   if (badAddr) return badAddr;
-  const offset = Number(c.req.query("offset") || "0");
-  const limit = Math.min(Number(c.req.query("limit") || "50"), 100);
+  const rawOffset = Number(c.req.query("offset") || "0");
+  const rawLimit = Number(c.req.query("limit") || "50");
+  const offset = Number.isFinite(rawOffset) && rawOffset >= 0 ? Math.floor(rawOffset) : 0;
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 100) : 50;
   try {
     const chain = await lineageQuery.getDecisionChain(address, offset, limit);
     return c.json({ decisions: chain, count: chain.length });
@@ -121,6 +164,8 @@ app.get("/api/lineage/:address", async (c) => {
 });
 
 // ─── Agent Control Routes ───────────────────────────────────────────────────
+
+app.use("/api/agent/*", agentAuth());
 
 app.post("/api/agent/start", async (c) => {
   try {

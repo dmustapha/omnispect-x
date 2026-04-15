@@ -62,7 +62,7 @@ export function Sidebar() {
       {/* Nav items */}
       <div className="ox-sidebar-nav flex flex-col gap-1 flex-1">
         {NAV_ITEMS.map(({ href, label, icon }) => {
-          const isActive = pathname === href || pathname.startsWith(href);
+          const isActive = pathname === href || pathname.startsWith(href + "/");
           return (
             <Link key={href} href={href} className="ox-sidebar-item" data-active={isActive}>
               {icon}

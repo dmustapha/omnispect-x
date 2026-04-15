@@ -118,12 +118,34 @@ export function DecisionTree({ decisions }: { decisions: DecisionNode[] }) {
               {/* Expanded detail panel */}
               {isExpanded && (
                 <div className="mt-1 ml-4 p-4 rounded-xl ox-glass-16 ox-glass-edge animate-fade-in space-y-3">
-                  {/* Reasoning text */}
+                  {/* Context-aware reasoning display */}
                   <div>
-                    <h4 className="ox-heading mb-1">Reasoning</h4>
-                    <p className="text-sm text-ox-text-secondary leading-relaxed whitespace-pre-wrap">
-                      {d.reasoningText || "Reasoning stored on IPFS — view via link below"}
-                    </p>
+                    <h4 className="ox-heading mb-1">
+                      {d.actionType === 0 ? "Signal Data" : d.actionType === 1 ? "LLM Analysis" : d.actionType === 2 ? "Trust Assessment" : d.actionType === 3 ? "Swap Details" : "Reasoning"}
+                    </h4>
+                    {d.reasoningText ? (
+                      <p className="text-sm text-ox-text-secondary leading-relaxed whitespace-pre-wrap">{d.reasoningText}</p>
+                    ) : (
+                      <div className="text-sm text-ox-text-secondary">
+                        <p className="mb-2">
+                          {d.actionType === 0
+                            ? "Smart money signal collected from on-chain whale tracking. Full signal payload pinned to IPFS."
+                            : d.actionType === 1
+                              ? "LLM reasoning and confidence analysis. Full reasoning payload pinned to IPFS."
+                              : d.actionType === 2
+                                ? "Trust score evaluation of target wallet. Score breakdown pinned to IPFS."
+                                : d.actionType === 3
+                                  ? "DEX swap executed through OKX OnchainOS. Transaction details pinned to IPFS."
+                                  : "Decision data stored on IPFS."
+                          }
+                        </p>
+                        {d.confidence != null && (
+                          <span className="inline-flex items-center gap-1.5 text-xs ox-glass-12 px-2 py-1 rounded-lg">
+                            Confidence: <span className={`font-mono font-semibold ${d.confidence >= 0.7 ? "text-ox-safe" : d.confidence >= 0.4 ? "text-ox-caution" : "text-ox-danger"}`}>{(d.confidence * 100).toFixed(0)}%</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Detail grid */}
