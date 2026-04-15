@@ -199,10 +199,20 @@ async function runCycle() {
       emit("agent:signal", { phase: "fallback", reason: "api_unavailable", source: "demo", cycle: state.currentCycle });
     }
 
-    // Pick strongest BUY signal (prefer buys for trading, highest amount)
+    // Pick strongest BUY signal — skip stablecoins (price near $1 with <1% change)
     const buySignals = smartMoneyData.filter(s => s.action === "buy");
-    const candidates = buySignals.length > 0 ? buySignals : smartMoneyData;
-    const topSignal = candidates.sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))[0];
+    const nonStable = buySignals.filter(s => {
+      const p = parseFloat(s.price || "0");
+      const ch = Math.abs(parseFloat(s.change || "0"));
+      return !(p > 0.95 && p < 1.05 && ch < 1); // filter USD-pegged stablecoins
+    });
+    const candidates = nonStable.length > 0 ? nonStable : buySignals.length > 0 ? buySignals : smartMoneyData;
+    // Score by: positive change (weight 2) + high volume (weight 1)
+    const topSignal = candidates.sort((a, b) => {
+      const aScore = parseFloat(a.change || "0") * 2 + Math.log10(Math.max(1, parseFloat(a.amount)));
+      const bScore = parseFloat(b.change || "0") * 2 + Math.log10(Math.max(1, parseFloat(b.amount)));
+      return bScore - aScore;
+    })[0];
 
     // Log signal collection
     try {
