@@ -276,6 +276,7 @@ app.all("/mcp", async (c) => {
 // Bun-native WebSocket upgrade
 const server = Bun.serve({
   port: config.port,
+  ...({ idleTimeout: 120 } as Record<string, unknown>), // Trust score queries take 30-60s
   fetch(req, server) {
     const url = new URL(req.url);
     if (url.pathname === "/ws") {
