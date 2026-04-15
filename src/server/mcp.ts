@@ -1,8 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
+import { createWalletClient, createPublicClient, http, defineChain, type Hex } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { scoreTrust } from "../services/trust-scorer";
 import { lineageQuery } from "../services/lineage-query";
+import { config } from "../config";
 
 const server = new McpServer({
   name: "omnispect-x",
@@ -97,6 +100,98 @@ server.registerTool(
         text: "lineage-log requires a wallet connection. Use the Omnispect-X API at POST /api/lineage/log with a signed transaction instead.",
       }],
     };
+  }
+);
+
+// ─── Tool: agent-register ─────────────────────────────────────────────────
+
+const REGISTER_ABI = [
+  {
+    name: "registerAgent",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "metadata", type: "string" }],
+    outputs: [],
+  },
+  {
+    name: "isRegistered",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "agent", type: "address" }],
+    outputs: [{ name: "", type: "bool" }],
+  },
+] as const;
+
+const mcpXlayer = defineChain({
+  id: 196,
+  name: "X Layer",
+  nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
+  rpcUrls: { default: { http: [config.xlayer.rpcUrl] } },
+});
+
+server.registerTool(
+  "agent-register",
+  {
+    title: "Agent Register",
+    description: "Register an AI agent on the Omnispect-X Decision Lineage contract on X Layer. Once registered, the agent can log decisions on-chain. Returns the transaction hash.",
+    inputSchema: {
+      metadata: z.string().describe("Agent description/metadata string (e.g. 'My Trading Agent v1')"),
+    },
+  },
+  async ({ metadata }) => {
+    try {
+      if (!config.agentWallet.privateKey) {
+        return {
+          content: [{ type: "text" as const, text: "Error: PRIVATE_KEY env var is required to register an agent." }],
+          isError: true,
+        };
+      }
+      if (!config.xlayer.lineageLoggerAddress) {
+        return {
+          content: [{ type: "text" as const, text: "Error: LINEAGE_CONTRACT env var is required." }],
+          isError: true,
+        };
+      }
+
+      const account = privateKeyToAccount(config.agentWallet.privateKey as Hex);
+      const publicClient = createPublicClient({ chain: mcpXlayer, transport: http(config.xlayer.rpcUrl) });
+      const walletClient = createWalletClient({ account, chain: mcpXlayer, transport: http(config.xlayer.rpcUrl) });
+      const contractAddress = config.xlayer.lineageLoggerAddress as `0x${string}`;
+
+      const isReg = await publicClient.readContract({
+        address: contractAddress,
+        abi: REGISTER_ABI,
+        functionName: "isRegistered",
+        args: [account.address],
+      });
+
+      if (isReg) {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ status: "already_registered", address: account.address }, null, 2) }],
+        };
+      }
+
+      const hash = await walletClient.writeContract({
+        address: contractAddress,
+        abi: REGISTER_ABI,
+        functionName: "registerAgent",
+        args: [metadata],
+      });
+
+      await publicClient.waitForTransactionReceipt({ hash });
+
+      return {
+        content: [{
+          type: "text" as const,
+          text: JSON.stringify({ status: "registered", address: account.address, txHash: hash, metadata }, null, 2),
+        }],
+      };
+    } catch (err) {
+      return {
+        content: [{ type: "text" as const, text: `Error registering agent: ${String(err)}` }],
+        isError: true,
+      };
+    }
   }
 );
 

@@ -19,9 +19,16 @@ export interface Finding {
   evidence: string;
 }
 
+export interface DimensionEvidence {
+  dataPoints: number;
+  sources: string[];
+  rawMetrics: Record<string, number | string>;
+}
+
 export interface DimensionScore {
   score: number; // 0-25
   findings: Finding[];
+  evidence: DimensionEvidence;
 }
 
 export interface UniswapRiskAssessment {
@@ -33,6 +40,13 @@ export interface UniswapRiskAssessment {
 export interface TrustScoreRequest {
   agentAddress: string;
   chainId?: number; // default 196
+}
+
+export interface TrustScoreMetadata {
+  chainsQueried: string[];
+  totalDataPoints: number;
+  queryDurationMs: number;
+  freshness: string;
 }
 
 export interface TrustScoreResponse {
@@ -47,6 +61,7 @@ export interface TrustScoreResponse {
   };
   uniswapRisk: UniswapRiskAssessment;
   recommendations: string[];
+  metadata: TrustScoreMetadata;
   timestamp: number;
 }
 
@@ -97,11 +112,56 @@ export interface PortfolioValue {
   totalValue: string;
 }
 
+export interface PortfolioOverview {
+  totalPnl: string;
+  winRate: string;
+  totalTrades: string;
+  avgPnl: string;
+}
+
+export interface TransactionRecord {
+  txHash: string;
+  from: string;
+  to: string;
+  amount: string;
+  timestamp: string;
+  type: string;
+  chainIndex: string;
+  symbol: string;
+}
+
+export interface LeaderboardEntry {
+  address: string;
+  pnl: string;
+  winRate: string;
+  roi: string;
+  rank: string;
+}
+
+export interface TokenPriceDetail {
+  tokenAddress: string;
+  marketCap: string;
+  volume24h: string;
+  holdersCount: string;
+  priceChange1h: string;
+  priceChange4h: string;
+  priceChange24h: string;
+  priceChange7d: string;
+  price: string;
+}
+
 export interface TokenBalance {
   tokenAddress: string;
   symbol: string;
   balance: string;
   tokenPrice: string;
+  chainIndex?: string;
+  tokenType?: string;
+  isRiskToken?: boolean;
+  transferAmount?: string;
+  availableAmount?: string;
+  rawBalance?: string;
+  address?: string;
 }
 
 export interface SecurityReport {
@@ -131,6 +191,7 @@ export interface TokenInfo {
   symbol: string;
   totalSupply: string;
   holdersCount: number;
+  socialLinks?: Record<string, string>;
 }
 
 export interface HolderInfo {
@@ -299,11 +360,13 @@ export interface AppConfig {
   uniswap: {
     tradingApiUrl: string;
     swapRouter02: string;
+    apiKey: string;
   };
   ipfs: {
     pinataJwt: string;
     gateway: string;
   };
+  corsOrigin: string;
   agentWallet: {
     privateKey: string;
   };
@@ -311,5 +374,9 @@ export interface AppConfig {
     paymentTokenAddress: string;
     pricePerReport: string; // in USDG wei
     facilitatorUrl: string;
+  };
+  anthropic: {
+    apiKey: string;
+    model: string;
   };
 }

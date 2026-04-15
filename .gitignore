@@ -1,14 +1,44 @@
+# Dependencies
 node_modules/
+frontend/node_modules/
+
+# Build
 dist/
+frontend/.next/
+frontend/tsconfig.tsbuildinfo
+
+# Env
 .env
-*.lockb
+.env.local
+.env*.local
+
+# Contracts
 contracts/out/
 contracts/cache/
 contracts/lib/
-frontend/.next/
-frontend/node_modules/
+contracts/broadcast/
+
+# OS
+.DS_Store
+*.log
+
+# Lock files
+*.lockb
+
+# Local
+.deploy-state.json
 .build-state.json
 .forge-state.json
-contracts/broadcast/
-contracts/cache/
-frontend/tsconfig.tsbuildinfo
+.debug-state.json
+.wire-state.json
+.verify-state.json
+.design-forge-state.json
+.conductor-state.json
+pipeline-log.md
+debug-results/
+design-variations/
+DEBUG-REPORT.md
+WIRE-REPORT.md
+VERIFY-REPORT.md
+concerns.md
+.vercel

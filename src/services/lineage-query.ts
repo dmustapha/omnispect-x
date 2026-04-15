@@ -89,23 +89,60 @@ function getLineageContract() {
   });
 }
 
-// ─── LRU Cache ──────────────────────────────────────────────────────────────
+// ─── LRU Cache (IPFS — immutable, no TTL needed) ────────────────────────────
 
 const ipfsCache = new Map<string, ReasoningPayload>();
-const MAX_CACHE = 500;
+const MAX_IPFS_CACHE = 500;
 
-function cacheSet(key: string, value: ReasoningPayload) {
-  if (ipfsCache.size >= MAX_CACHE) {
+function ipfsCacheGet(key: string): ReasoningPayload | undefined {
+  const value = ipfsCache.get(key);
+  if (value !== undefined) {
+    // Move to end (most recently used)
+    ipfsCache.delete(key);
+    ipfsCache.set(key, value);
+  }
+  return value;
+}
+
+function ipfsCacheSet(key: string, value: ReasoningPayload) {
+  if (ipfsCache.size >= MAX_IPFS_CACHE) {
     const firstKey = ipfsCache.keys().next().value;
     if (firstKey) ipfsCache.delete(firstKey);
   }
   ipfsCache.set(key, value);
 }
 
+// ─── LRU Cache (Decision Chains — TTL 60s) ──────────────────────────────────
+
+const chainCache = new Map<string, { data: DecisionNode[]; ts: number }>();
+const MAX_CHAIN_CACHE = 100;
+const CHAIN_CACHE_TTL = 60_000;
+
+function chainCacheGet(key: string): DecisionNode[] | undefined {
+  const entry = chainCache.get(key);
+  if (!entry) return undefined;
+  if (Date.now() - entry.ts > CHAIN_CACHE_TTL) {
+    chainCache.delete(key);
+    return undefined;
+  }
+  chainCache.delete(key);
+  chainCache.set(key, entry);
+  return entry.data;
+}
+
+function chainCacheSet(key: string, data: DecisionNode[]) {
+  if (chainCache.size >= MAX_CHAIN_CACHE) {
+    const firstKey = chainCache.keys().next().value;
+    if (firstKey) chainCache.delete(firstKey);
+  }
+  chainCache.set(key, { data, ts: Date.now() });
+}
+
 // ─── IPFS Fetcher ───────────────────────────────────────────────────────────
 
 export async function getReasoningText(ipfsUri: string): Promise<ReasoningPayload> {
-  if (ipfsCache.has(ipfsUri)) return ipfsCache.get(ipfsUri)!;
+  const cached = ipfsCacheGet(ipfsUri);
+  if (cached) return cached;
 
   const cid = ipfsUri.replace("ipfs://", "");
   const url = `${config.ipfs.gateway}/ipfs/${cid}`;
@@ -113,7 +150,7 @@ export async function getReasoningText(ipfsUri: string): Promise<ReasoningPayloa
   if (!res.ok) throw new Error(`IPFS fetch failed: ${res.status}`);
 
   const payload = (await res.json()) as ReasoningPayload;
-  cacheSet(ipfsUri, payload);
+  ipfsCacheSet(ipfsUri, payload);
   return payload;
 }
 
@@ -138,6 +175,10 @@ export async function getDecisionChain(
   offset = 0,
   limit = 50
 ): Promise<DecisionNode[]> {
+  const cacheKey = `${agentAddress}:${offset}:${limit}`;
+  const cached = chainCacheGet(cacheKey);
+  if (cached) return cached;
+
   const contract = getLineageContract();
   const raw = await contract.read.getAgentDecisionChain([
     agentAddress as `0x${string}`,
@@ -160,9 +201,12 @@ export async function getDecisionChain(
     })
   );
 
-  return enriched
+  const result = enriched
     .filter(r => r.status === "fulfilled")
     .map(r => (r as PromiseFulfilledResult<DecisionNode>).value);
+
+  chainCacheSet(cacheKey, result);
+  return result;
 }
 
 export async function getDecision(decisionId: string): Promise<DecisionNode> {

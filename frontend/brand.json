@@ -1,0 +1,21 @@
+{
+  "colors": {
+    "primary": "#0D0705",
+    "secondary": "#170F0C",
+    "accent": "#F28C18",
+    "background": "#0D0705",
+    "surface": "#251D1A",
+    "text": "#F5E6D3",
+    "safe": "#4ADE80",
+    "caution": "#F28C18",
+    "danger": "#D63F5A",
+    "purple": "#D63F5A"
+  },
+  "fonts": {
+    "heading": "Clash Display",
+    "body": "Inter",
+    "mono": "JetBrains Mono"
+  },
+  "logoPath": null,
+  "darkMode": true
+}

@@ -1,6 +1,13 @@
 "use client";
 
-import { Radar, RadarChart as RChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from "recharts";
+import {
+  Radar,
+  RadarChart as RChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  ResponsiveContainer,
+} from "recharts";
 
 interface Props {
   dimensions: {
@@ -12,7 +19,7 @@ interface Props {
   color?: string;
 }
 
-export function RadarChart({ dimensions, color = "#6366f1" }: Props) {
+export function RadarChart({ dimensions, color = "#F28C18" }: Props) {
   const data = [
     { axis: "Txn Patterns", value: dimensions.transactionPatterns.score, max: 25 },
     { axis: "Contract Int.", value: dimensions.contractInteractions.score, max: 25 },
@@ -21,12 +28,27 @@ export function RadarChart({ dimensions, color = "#6366f1" }: Props) {
   ];
 
   return (
-    <ResponsiveContainer width="100%" height={300}>
+    <ResponsiveContainer width="100%" height={240}>
       <RChart data={data}>
-        <PolarGrid stroke="#334155" />
-        <PolarAngleAxis dataKey="axis" tick={{ fill: "#94a3b8", fontSize: 12 }} />
-        <PolarRadiusAxis angle={30} domain={[0, 25]} tick={{ fill: "#64748b", fontSize: 10 }} />
-        <Radar name="Trust" dataKey="value" stroke={color} fill={color} fillOpacity={0.3} />
+        <PolarGrid stroke="rgba(61, 46, 36, 0.3)" strokeDasharray="3 3" />
+        <PolarAngleAxis
+          dataKey="axis"
+          tick={{ fill: "var(--ox-text-secondary)", fontSize: 11, fontFamily: "var(--font-inter)" }}
+        />
+        <PolarRadiusAxis
+          angle={30}
+          domain={[0, 25]}
+          tick={{ fill: "var(--ox-text-muted)", fontSize: 9 }}
+          axisLine={false}
+        />
+        <Radar
+          name="Trust"
+          dataKey="value"
+          stroke={color}
+          fill={color}
+          fillOpacity={0.15}
+          strokeWidth={2}
+        />
       </RChart>
     </ResponsiveContainer>
   );

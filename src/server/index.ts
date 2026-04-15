@@ -4,15 +4,40 @@ import { scoreTrust } from "../services/trust-scorer";
 import { lineageQuery } from "../services/lineage-query";
 import { demoAgent } from "../services/demo-agent";
 import { x402Gate } from "../middleware/x402";
-import { addClient, getClientCount } from "./ws";
+import { addClient, removeClient, getClientCount } from "./ws";
 import { config } from "../config";
+import type { Context } from "hono";
 import type { TrustScoreRequest } from "../types";
+
+// ─── Startup Validation ────────────────────────────────────────────────────
+if (!config.xlayer.lineageLoggerAddress) {
+  console.warn("[config] LINEAGE_CONTRACT not set — on-chain logging will fail. Set it in .env");
+}
+if (!config.okx.apiKey) {
+  console.warn("[config] OKX_API_KEY not set — API calls will fail. Set it in .env");
+}
 
 const app = new Hono();
 
+// ─── Validation ──────────────────────────────────────────────────────────────
+
+const ADDRESS_RE = /^0x[a-fA-F0-9]{40}$/;
+
+function validateAddress(c: Context, address: string) {
+  if (!ADDRESS_RE.test(address)) {
+    return c.json({ error: "Invalid address — must be 0x followed by 40 hex chars" }, 400);
+  }
+  return null;
+}
+
+function validateChainId(raw: string): number | null {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 // ─── Middleware ──────────────────────────────────────────────────────────────
 
-app.use("*", cors({ origin: "*" }));
+app.use("*", cors({ origin: config.corsOrigin }));
 
 // ─── Health Check ───────────────────────────────────────────────────────────
 
@@ -24,7 +49,10 @@ app.get("/health", (c) =>
 
 app.get("/api/trust/:address", async (c) => {
   const address = c.req.param("address");
-  const chainId = Number(c.req.query("chainId") || "196");
+  const badAddr = validateAddress(c, address);
+  if (badAddr) return badAddr;
+  const chainId = validateChainId(c.req.query("chainId") || "196");
+  if (!chainId) return c.json({ error: "Invalid chainId" }, 400);
   try {
     const result = await scoreTrust({ agentAddress: address, chainId });
     return c.json(result);
@@ -36,7 +64,10 @@ app.get("/api/trust/:address", async (c) => {
 // Premium trust report (x402 gated)
 app.get("/api/trust/:address/premium", x402Gate(), async (c) => {
   const address = c.req.param("address");
-  const chainId = Number(c.req.query("chainId") || "196");
+  const badAddr = validateAddress(c, address);
+  if (badAddr) return badAddr;
+  const chainId = validateChainId(c.req.query("chainId") || "196");
+  if (!chainId) return c.json({ error: "Invalid chainId" }, 400);
   try {
     const result = await scoreTrust({ agentAddress: address, chainId });
     // Premium report includes extra data
@@ -65,6 +96,8 @@ app.get("/api/lineage/decision/:id", async (c) => {
 
 app.get("/api/lineage/:address/stats", async (c) => {
   const address = c.req.param("address");
+  const badAddr = validateAddress(c, address);
+  if (badAddr) return badAddr;
   try {
     const stats = await lineageQuery.getAgentStats(address);
     return c.json(stats);
@@ -75,6 +108,8 @@ app.get("/api/lineage/:address/stats", async (c) => {
 
 app.get("/api/lineage/:address", async (c) => {
   const address = c.req.param("address");
+  const badAddr = validateAddress(c, address);
+  if (badAddr) return badAddr;
   const offset = Number(c.req.query("offset") || "0");
   const limit = Math.min(Number(c.req.query("limit") || "50"), 100);
   try {
@@ -125,7 +160,9 @@ const server = Bun.serve({
       addClient(ws as unknown as WebSocket);
     },
     message() { /* client messages not needed */ },
-    close() { /* handled by addClient listener */ },
+    close(ws) {
+      removeClient(ws as unknown as WebSocket);
+    },
   },
 });
 
