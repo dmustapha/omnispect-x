@@ -38,7 +38,7 @@ export default function TrustPage() {
       <div className="mb-6">
         <h1 className="font-display text-2xl font-bold text-ox-text-primary mb-1">Trust Score</h1>
         <p className="text-sm text-ox-text-muted">
-          Paste any wallet address to see how trustworthy it is. We analyze transaction history, token holdings, and on-chain behavior across 5 chains to produce a score from 0 (risky) to 100 (safe).
+          Paste any wallet address to see how trustworthy it is. We analyze transaction history, token holdings, and on-chain behavior across multiple EVM chains to produce a score from 0 (risky) to 100 (safe).
         </p>
       </div>
 
@@ -52,6 +52,7 @@ export default function TrustPage() {
           className="ox-input flex-1 px-4 py-3 text-sm"
         />
         <button
+          data-search-btn
           onClick={handleSearch}
           disabled={loading}
           className="ox-btn-primary px-6 py-3 text-sm whitespace-nowrap"
@@ -96,7 +97,14 @@ export default function TrustPage() {
             <p>Each dimension scores 0-25 points. Total: 0-100.</p>
           </div>
           <button
-            onClick={() => setAddress("0x131f3b6cD18039D87da0AaECaa5C8462Dd51855D")}
+            onClick={() => {
+              setAddress("0x131f3b6cD18039D87da0AaECaa5C8462Dd51855D");
+              // Auto-trigger search after setting address
+              setTimeout(() => {
+                const btn = document.querySelector<HTMLButtonElement>("[data-search-btn]");
+                btn?.click();
+              }, 50);
+            }}
             className="mt-3 text-xs text-ox-cyan-dim hover:text-ox-cyan transition-colors font-mono cursor-pointer"
           >
             Try our demo agent: 0x131f...855D

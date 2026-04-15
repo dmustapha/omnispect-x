@@ -4,6 +4,8 @@ import { useState, useRef } from "react";
 import { fetchLineage, fetchAgentStats } from "../../lib/api";
 import { DecisionTree, type DecisionNode } from "../../components/DecisionTree";
 
+const PAGE_SIZE = 20;
+
 export default function LineagePage() {
   const [address, setAddress] = useState("");
   const [decisions, setDecisions] = useState<DecisionNode[]>([]);
@@ -14,6 +16,8 @@ export default function LineagePage() {
     actionTypeCounts?: Record<string, number>;
   } | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inFlight = useRef(false);
 
@@ -28,18 +32,36 @@ export default function LineagePage() {
     setError(null);
     try {
       const [lineageData, statsData] = await Promise.all([
-        fetchLineage(address),
+        fetchLineage(address, 0, PAGE_SIZE),
         fetchAgentStats(address),
       ]);
-      setDecisions(lineageData.decisions || []);
+      const items = lineageData.decisions || [];
+      setDecisions(items);
+      setHasMore(items.length === PAGE_SIZE);
       setStats(statsData);
     } catch {
       setDecisions([]);
       setStats(null);
+      setHasMore(false);
       setError("Failed to load lineage data. Check the address and try again.");
     } finally {
       setLoading(false);
       inFlight.current = false;
+    }
+  }
+
+  async function loadMore() {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const data = await fetchLineage(address, decisions.length, PAGE_SIZE);
+      const items = data.decisions || [];
+      setDecisions((prev) => [...prev, ...items]);
+      setHasMore(items.length === PAGE_SIZE);
+    } catch {
+      setError("Failed to load more decisions.");
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -133,6 +155,17 @@ export default function LineagePage() {
         <div className="animate-fade-in">
           <div className="ox-glow-line mb-4" />
           <DecisionTree decisions={decisions} />
+          {hasMore && (
+            <div className="mt-4 text-center">
+              <button
+                onClick={loadMore}
+                disabled={loadingMore}
+                className="ox-btn-secondary ox-glass-16 px-6 py-2 text-sm"
+              >
+                {loadingMore ? "Loading..." : "Load More"}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

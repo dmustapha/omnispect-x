@@ -184,6 +184,8 @@ export interface SmartMoneyActivity {
   action: string;
   amount: string;
   ts: number;
+  price?: string;
+  change?: string;
 }
 
 export interface Signal {
@@ -306,6 +308,7 @@ export interface Position {
   amount: string;
   entryTimestamp: number;
   entryTxHash: string;
+  chainId: string;
 }
 
 export interface CycleEvent {
@@ -328,6 +331,7 @@ export interface WSMessage {
   event: CycleEvent["type"];
   data: Record<string, unknown>;
   timestamp: number;
+  cycle?: number;
 }
 
 // ─── x402 Types ─────────────────────────────────────────────────────────────
@@ -374,6 +378,10 @@ export interface AppConfig {
     pinataJwt: string;
     gateway: string;
   };
+  chains?: {
+    ethRpcUrl?: string;
+    bscRpcUrl?: string;
+  };
   agentSecret: string;
   corsOrigin: string;
   agentWallet: {
@@ -382,7 +390,6 @@ export interface AppConfig {
   x402: {
     paymentTokenAddress: string;
     pricePerReport: string; // in USDG wei
-    facilitatorUrl: string;
   };
   anthropic: {
     apiKey: string;

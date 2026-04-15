@@ -17,6 +17,7 @@ export function broadcast(event: CycleEvent) {
     event: event.type,
     data: event.data,
     timestamp: event.timestamp,
+    cycle: event.cycle,
   };
   const json = JSON.stringify(message);
 

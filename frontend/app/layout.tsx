@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "./Sidebar";
+import { ErrorBoundary } from "./ErrorBoundary";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains" });
@@ -42,7 +43,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
         <Sidebar />
         <main className="ox-main-content relative z-[1] md:ml-[220px]">
-          <div className="max-w-[1280px] mx-auto px-6 py-6">{children}</div>
+          <div className="max-w-[1280px] mx-auto px-6 py-6">
+            <ErrorBoundary>{children}</ErrorBoundary>
+          </div>
         </main>
       </body>
     </html>

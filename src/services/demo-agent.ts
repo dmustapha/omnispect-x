@@ -1,12 +1,20 @@
 import { randomBytes } from "crypto";
-import { createWalletClient, createPublicClient, http, keccak256, toBytes, defineChain, type Hex } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
-import { okxClient } from "../lib/okx-client";
-import { scoreTrust } from "./trust-scorer";
-import { generateReasoning } from "./llm-reasoning";
+import { keccak256, toBytes, type Hex } from "viem";
+import { callMcpTool } from "../lib/mcp-client";
 import { broadcast } from "../server/ws";
+import { getChainClients, getAgentAccount } from "../lib/chains";
 import { config } from "../config";
-import type { AgentConfig, AgentState, CycleEvent, SmartMoneyActivity } from "../types";
+import type {
+  AgentConfig,
+  AgentState,
+  CycleEvent,
+  SmartMoneyActivity,
+  PriceInfo,
+  KlineData,
+  TrustScoreResponse,
+  SwapQuote,
+  SwapResult,
+} from "../types";
 
 // ─── Contract ABI (write subset) ───────────────────────────────────────────
 
@@ -40,43 +48,11 @@ const LINEAGE_WRITE_ABI = [
   },
 ] as const;
 
-// ─── Chain Definition ────────────────────────────────────────────────────────
-
-const xlayer = defineChain({
-  id: 196,
-  name: "X Layer",
-  nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
-  rpcUrls: { default: { http: [config.xlayer.rpcUrl] } },
-});
-
-// ─── Lazy Wallet Setup (avoids crash on missing PRIVATE_KEY) ────────────────
-
-function lazyAccount() {
-  if (!config.agentWallet.privateKey) throw new Error("PRIVATE_KEY env var is required to run the demo agent");
-  return privateKeyToAccount(config.agentWallet.privateKey as Hex);
-}
-
-let _memo: {
-  account: ReturnType<typeof privateKeyToAccount>;
-  wallet: ReturnType<typeof createWalletClient<ReturnType<typeof http>, typeof xlayer, ReturnType<typeof privateKeyToAccount>>>;
-  public: ReturnType<typeof createPublicClient<ReturnType<typeof http>, typeof xlayer>>;
-} | null = null;
-
-function ensureWallet() {
-  if (!_memo) {
-    const account = lazyAccount();
-    _memo = {
-      account,
-      wallet: createWalletClient({ account, chain: xlayer, transport: http(config.xlayer.rpcUrl) }),
-      public: createPublicClient({ chain: xlayer, transport: http(config.xlayer.rpcUrl) }),
-    };
-  }
-  return _memo;
-}
-
-function getAccount() { return ensureWallet().account; }
-function getWalletClient() { return ensureWallet().wallet; }
-function getPublicClient() { return ensureWallet().public; }
+// ─── Multi-Chain Wallet Access ──────────────────────────────────────────────
+// X Layer clients for contract interactions (lineage contract lives on X Layer)
+const X_LAYER = "196";
+function xlayerClients() { return getChainClients(X_LAYER); }
+function getAccount() { return getAgentAccount(); }
 
 const contractAddress = config.xlayer.lineageLoggerAddress as `0x${string}`;
 
@@ -103,7 +79,6 @@ async function logDecisionOnChain(
   actionType: number,
   resultTxHash: string = "0x" + "0".repeat(64)
 ): Promise<string> {
-  // Pin reasoning to IPFS — skip on-chain logging if pin fails
   let reasoningURI: string;
   try {
     reasoningURI = await pinToIPFS(reasoning);
@@ -114,8 +89,10 @@ async function logDecisionOnChain(
   const reasoningHash = keccak256(toBytes(JSON.stringify(reasoning)));
   const decisionId = keccak256(toBytes(`${Date.now()}-${actionType}-${randomBytes(16).toString("hex")}`));
 
-  // Write to contract
-  const hash = await getWalletClient().writeContract({
+  const xl = xlayerClients();
+  const hash = await xl.wallet.writeContract({
+    chain: xl.chain,
+    account: getAccount(),
     address: contractAddress,
     abi: LINEAGE_WRITE_ABI,
     functionName: "logDecision",
@@ -128,7 +105,7 @@ async function logDecisionOnChain(
     ],
   });
 
-  await getPublicClient().waitForTransactionReceipt({ hash });
+  await xl.public.waitForTransactionReceipt({ hash });
   return decisionId;
 }
 
@@ -165,14 +142,21 @@ function emit(type: CycleEvent["type"], data: Record<string, unknown>) {
   broadcast(event);
 }
 
-// ─── 5-Phase Cycle ──────────────────────────────────────────────────────────
+// ─── 5-Phase Cycle (MCP-routed) ────────────────────────────────────────────
 
 async function runCycle() {
   if (!state.running) return;
 
-  // Circuit breaker check
+  // Circuit breaker check (CRIT-2 fix: now uses real tracked values)
   if (state.consecutiveLosses >= agentConfig.circuitBreaker.maxConsecutiveLosses) {
     emit("agent:error", { phase: "circuit_breaker", reason: "max_consecutive_losses", losses: state.consecutiveLosses });
+    stopAgent();
+    return;
+  }
+
+  // PnL circuit breaker (CRIT-2 fix: check maxLossPercent)
+  if (state.totalPnl < -(agentConfig.circuitBreaker.maxLossPercent)) {
+    emit("agent:error", { phase: "circuit_breaker", reason: "max_loss_exceeded", totalPnl: state.totalPnl });
     stopAgent();
     return;
   }
@@ -180,24 +164,33 @@ async function runCycle() {
   state.currentCycle++;
 
   try {
-    // ── Phase 1: Signal Collection ──
+    // ── Phase 0: Check & Exit Existing Positions (CRIT-3 fix) ──
+    await evaluateExistingPositions();
+
+    // ── Phase 1: Signal Collection (via MCP) ──
     emit("agent:signal", { phase: "collecting", cycle: state.currentCycle });
 
     let smartMoneyData: SmartMoneyActivity[] = [];
+    let signalChainId = "1";
     let signalSource = "live";
-    try {
-      // Try ETH mainnet first (most smart money data), then cross-chain
-      smartMoneyData = await okxClient.dexSignal.smartMoney("1", 10);
-    } catch {
+
+    // Try collecting signals: ETH → BSC → X Layer → demo fallback
+    const signalChains = ["1", "56", "196"];
+    for (const chain of signalChains) {
       try {
-        smartMoneyData = await okxClient.dexSignal.smartMoney("56", 10);
+        smartMoneyData = await callMcpTool<SmartMoneyActivity[]>("smart-money-signals", { chainId: chain, limit: 10 });
+        if (smartMoneyData.length > 0) {
+          signalChainId = chain;
+          break;
+        }
       } catch {
-        // All API calls failed — use demo signals
+        // This chain's API failed, try next
       }
     }
 
     if (smartMoneyData.length === 0) {
       signalSource = "demo";
+      signalChainId = "196";
       smartMoneyData = [
         { address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", tokenAddress: "0x5a3e6a77ba2f983ec0d371ea3b475f8bc0811ad5", action: "buy", amount: "15000", ts: Date.now() },
         { address: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B", tokenAddress: "0x8c4037faa47b089e42a02f5c6973e2463e2e2a31", action: "buy", amount: "8500", ts: Date.now() },
@@ -206,48 +199,67 @@ async function runCycle() {
       emit("agent:signal", { phase: "fallback", reason: "api_unavailable", source: "demo", cycle: state.currentCycle });
     }
 
-    // Pick strongest signal (highest amount)
-    const topSignal = smartMoneyData.sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))[0];
+    // Pick strongest BUY signal (prefer buys for trading, highest amount)
+    const buySignals = smartMoneyData.filter(s => s.action === "buy");
+    const candidates = buySignals.length > 0 ? buySignals : smartMoneyData;
+    const topSignal = candidates.sort((a, b) => parseFloat(b.amount) - parseFloat(a.amount))[0];
 
-    // Log signal collection (best-effort — don't crash cycle on logging failure)
+    // Log signal collection
     try {
       await logDecisionOnChain(
-        { phase: "signal", signals: smartMoneyData.slice(0, 3), topSignal },
+        { phase: "signal", signals: smartMoneyData.slice(0, 3), topSignal, chainId: signalChainId },
         0 // SIGNAL_COLLECTED
       );
     } catch (e) { console.warn(`[demo-agent] On-chain log failed (signal): ${e}`); }
 
-    emit("agent:signal", { phase: "collected", topSignal, signalCount: smartMoneyData.length, source: signalSource });
+    emit("agent:signal", { phase: "collected", topSignal, signalCount: smartMoneyData.length, source: signalSource, chainId: signalChainId });
 
-    // ── Phase 2: Analysis ──
-    emit("agent:analysis", { phase: "analyzing", token: topSignal.tokenAddress });
+    // ── Phase 2: Analysis (via MCP) ── CRIT-1 fix: use signal's chain for price/kline
+    emit("agent:analysis", { phase: "analyzing", token: topSignal.tokenAddress, chainId: signalChainId });
 
-    const [priceData, marketData] = await Promise.allSettled([
-      okxClient.dexMarket.price(topSignal.tokenAddress, "196"),
-      okxClient.dexMarket.kline(topSignal.tokenAddress, "1H", "196"),
-    ]);
+    let tokenPrice: PriceInfo | null = null;
+    let klines: KlineData[] = [];
 
-    const tokenPrice = priceData.status === "fulfilled" ? priceData.value : null;
-    const klines = marketData.status === "fulfilled" ? marketData.value : [];
+    try {
+      tokenPrice = await callMcpTool<PriceInfo | null>("token-price", {
+        tokenAddress: topSignal.tokenAddress,
+        chainId: signalChainId,
+      });
+    } catch { /* price fetch failed */ }
+
+    // Fallback: use price/change from the smart money signal if MCP price call failed
+    if (!tokenPrice && topSignal.price) {
+      tokenPrice = { price: topSignal.price, change24h: topSignal.change ?? "0", volume24h: topSignal.amount };
+    }
+
+    try {
+      klines = await callMcpTool<KlineData[]>("token-klines", {
+        tokenAddress: topSignal.tokenAddress,
+        chainId: signalChainId,
+      });
+    } catch { /* kline fetch failed */ }
 
     let confidence: number;
     let reasoning: string | undefined;
     try {
-      const llmResult = await generateReasoning({
-        signal: topSignal,
-        priceInfo: tokenPrice,
-        klines,
+      const llmResult = await callMcpTool<{ confidence: number; reasoning: string }>("llm-analyze", {
+        tokenAddress: topSignal.tokenAddress,
+        whaleAddress: topSignal.address,
+        action: topSignal.action,
+        amount: topSignal.amount,
+        price: tokenPrice?.price,
+        change24h: tokenPrice?.change24h,
+        klines: klines.slice(-5).map(k => ({ vol: k.vol, c: k.c })),
       });
       confidence = llmResult.confidence;
       reasoning = llmResult.reasoning;
     } catch {
-      // Fallback to algorithmic analysis
       confidence = analyzeSignal(topSignal, tokenPrice, klines);
     }
 
     try {
       await logDecisionOnChain(
-        { phase: "analysis", token: topSignal.tokenAddress, confidence, reasoning, price: tokenPrice, klineCount: klines.length },
+        { phase: "analysis", token: topSignal.tokenAddress, confidence, reasoning, price: tokenPrice, chainId: signalChainId },
         1 // ANALYSIS_COMPLETE
       );
     } catch (e) { console.warn(`[demo-agent] On-chain log failed (analysis): ${e}`); }
@@ -259,10 +271,10 @@ async function runCycle() {
       return scheduleCycle();
     }
 
-    // ── Phase 3: Trust Gate ──
+    // ── Phase 3: Trust Gate (via MCP) ──
     emit("agent:trust-check", { phase: "checking", target: topSignal.address });
 
-    const trustReport = await scoreTrust({ agentAddress: topSignal.address });
+    const trustReport = await callMcpTool<TrustScoreResponse>("trust-score", { agentAddress: topSignal.address });
 
     try {
       await logDecisionOnChain(
@@ -271,74 +283,92 @@ async function runCycle() {
       );
     } catch (e) { console.warn(`[demo-agent] On-chain log failed (trust): ${e}`); }
 
-    emit("agent:trust-check", {
-      phase: "complete",
-      score: trustReport.overallScore,
-      classification: trustReport.classification,
-    });
+    emit("agent:trust-check", { phase: "complete", score: trustReport.overallScore, classification: trustReport.classification });
 
     if (trustReport.overallScore < agentConfig.trustFloor) {
       emit("agent:trust-check", { phase: "rejected", reason: "trust_below_floor", score: trustReport.overallScore });
       return scheduleCycle();
     }
 
-    // ── Phase 4: Execute Swap ──
-    emit("agent:swap", { phase: "executing", token: topSignal.tokenAddress, action: topSignal.action });
-
-    const NATIVE_OKB = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
-    // Convert maxPositionSize (in OKB) to wei
+    // ── Phase 4: Execute Swap (X-Layer-first, fallback to signal chain) ──
+    const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
     const positionOkb = parseFloat(agentConfig.maxPositionSize) || 0.1;
     const swapAmount = BigInt(Math.round(positionOkb * 1e18)).toString();
 
+    // Determine execution chain: try X Layer first, fall back to signal chain
+    let executionChainId = signalChainId;
+    let xlayerFallback = false;
+
+    if (signalChainId !== X_LAYER) {
+      try {
+        const xlQuote = await callMcpTool<SwapQuote | null>("dex-quote", {
+          chainId: X_LAYER,
+          fromToken: NATIVE_TOKEN,
+          toToken: topSignal.tokenAddress,
+          amount: swapAmount,
+        });
+        if (parseFloat(xlQuote?.routerResult?.toTokenAmount || "0") > 0) {
+          executionChainId = X_LAYER;
+          xlayerFallback = true;
+        }
+      } catch {
+        // Token not on X Layer, use signal chain
+      }
+    }
+
+    emit("agent:swap", {
+      phase: "executing", token: topSignal.tokenAddress, action: topSignal.action,
+      signalChain: signalChainId, executionChain: executionChainId, xlayerFallback,
+    });
+
     let swapTxHash = "0x" + "0".repeat(64);
     try {
-      // Get quote first to validate output
-      const quote = await okxClient.dexSwap.quote({
-        chainIndex: "196",
-        fromTokenAddress: NATIVE_OKB,
-        toTokenAddress: topSignal.tokenAddress,
+      const quote = await callMcpTool<SwapQuote | null>("dex-quote", {
+        chainId: executionChainId,
+        fromToken: NATIVE_TOKEN,
+        toToken: topSignal.tokenAddress,
         amount: swapAmount,
       });
 
-      // Validate: reject if quote returns zero output (illiquid pair)
       const quotedOutput = parseFloat(quote?.routerResult?.toTokenAmount || "0");
       if (quotedOutput <= 0) {
         emit("agent:error", { phase: "swap_rejected", reason: "zero_output_quote" });
         return scheduleCycle();
       }
 
-      const swapData = await okxClient.dexSwap.swap({
-        chainIndex: "196",
-        fromTokenAddress: NATIVE_OKB,
-        toTokenAddress: topSignal.tokenAddress,
+      const swapData = await callMcpTool<SwapResult | null>("dex-swap", {
+        chainId: executionChainId,
+        fromToken: NATIVE_TOKEN,
+        toToken: topSignal.tokenAddress,
         amount: swapAmount,
         slippage: "0.01",
         userWalletAddress: getAccount().address,
       });
 
-      // Validate swap response before signing
       if (!swapData?.tx?.to || !swapData?.tx?.data) {
         emit("agent:error", { phase: "swap_rejected", reason: "invalid_swap_response" });
         return scheduleCycle();
       }
 
       const txValue = BigInt(swapData.tx.value || "0");
-      const maxValue = BigInt(swapAmount) * 2n; // sanity: never send more than 2x requested
+      const maxValue = BigInt(swapAmount) * 2n;
       if (txValue > maxValue) {
-        emit("agent:error", { phase: "swap_rejected", reason: "tx_value_exceeds_max", txValue: txValue.toString() });
+        emit("agent:error", { phase: "swap_rejected", reason: "tx_value_exceeds_max" });
         return scheduleCycle();
       }
 
-      const hash = await getWalletClient().sendTransaction({
+      const clients = getChainClients(executionChainId);
+      const hash = await clients.wallet.sendTransaction({
+        chain: clients.chain,
+        account: getAccount(),
         to: swapData.tx.to as `0x${string}`,
         data: swapData.tx.data as `0x${string}`,
         value: txValue,
       });
 
-      await getPublicClient().waitForTransactionReceipt({ hash });
+      await clients.public.waitForTransactionReceipt({ hash });
       swapTxHash = hash;
 
-      // Track position
       state.positions.push({
         tokenAddress: topSignal.tokenAddress,
         symbol: topSignal.tokenAddress.slice(0, 10),
@@ -346,17 +376,23 @@ async function runCycle() {
         amount: swapAmount,
         entryTimestamp: Date.now(),
         entryTxHash: hash,
+        chainId: executionChainId,
       });
 
-      emit("agent:swap", { phase: "complete", txHash: hash, token: topSignal.tokenAddress });
+      emit("agent:swap", {
+        phase: "complete", txHash: hash, token: topSignal.tokenAddress,
+        executionChain: executionChainId, xlayerFallback,
+      });
     } catch (err) {
       emit("agent:error", { phase: "swap_failed", error: String(err) });
+      // CRIT-2 fix: count failed swaps as losses
+      state.consecutiveLosses++;
       try {
         await logDecisionOnChain(
           { phase: "swap_failed", token: topSignal.tokenAddress, error: String(err), confidence },
           6, // EMERGENCY_STOP
         );
-      } catch (logErr) { console.warn(`[demo-agent] Failed to log swap failure on-chain: ${logErr}`); }
+      } catch (logErr) { console.warn(`[demo-agent] Failed to log swap failure: ${logErr}`); }
       return scheduleCycle();
     }
 
@@ -370,7 +406,8 @@ async function runCycle() {
           amount: swapAmount,
           confidence,
           trustScore: trustReport.overallScore,
-          signals: [topSignal],
+          signalChain: signalChainId,
+          executionChain: executionChainId,
         },
         3, // SWAP_EXECUTED
         swapTxHash
@@ -378,8 +415,11 @@ async function runCycle() {
     } catch (e) { console.warn(`[demo-agent] On-chain log failed (lineage): ${e}`); }
 
     state.lastDecisionId = lineageId;
+    // CRIT-2 fix: reset consecutive losses on successful swap
+    state.consecutiveLosses = 0;
+
     emit("agent:lineage-logged", { phase: "logged", decisionId: lineageId, txHash: swapTxHash });
-    emit("agent:cycle-complete", { cycle: state.currentCycle, pnl: state.totalPnl });
+    emit("agent:cycle-complete", { cycle: state.currentCycle, pnl: state.totalPnl, positions: state.positions.length });
 
   } catch (err) {
     emit("agent:error", { error: String(err), cycle: state.currentCycle });
@@ -388,12 +428,110 @@ async function runCycle() {
   scheduleCycle();
 }
 
-// ─── Signal Analysis ────────────────────────────────────────────────────────
+// ─── Position Exit Logic (CRIT-3 fix) ──────────────────────────────────────
+
+async function evaluateExistingPositions() {
+  if (state.positions.length === 0) return;
+
+  const PROFIT_TARGET = 0.10;  // 10% profit → sell
+  const STOP_LOSS = -0.05;     // 5% loss → sell
+
+  const positionsToClose: number[] = [];
+
+  for (let i = 0; i < state.positions.length; i++) {
+    const pos = state.positions[i];
+    const entryPrice = parseFloat(pos.entryPrice);
+    if (entryPrice <= 0) continue;
+
+    try {
+      // Fetch current price via MCP using the position's chain
+      const currentPriceData = await callMcpTool<PriceInfo | null>("token-price", {
+        tokenAddress: pos.tokenAddress,
+        chainId: pos.chainId,
+      });
+
+      if (!currentPriceData?.price) continue;
+
+      const currentPrice = parseFloat(currentPriceData.price);
+      if (currentPrice <= 0) continue;
+
+      const pnlPercent = (currentPrice - entryPrice) / entryPrice;
+
+      if (pnlPercent >= PROFIT_TARGET || pnlPercent <= STOP_LOSS) {
+        const reason = pnlPercent >= PROFIT_TARGET ? "profit_target" : "stop_loss";
+
+        emit("agent:swap", {
+          phase: "closing_position",
+          token: pos.tokenAddress,
+          reason,
+          pnlPercent: (pnlPercent * 100).toFixed(2) + "%",
+          chainId: pos.chainId,
+        });
+
+        // Execute sell via MCP
+        try {
+          const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+          const swapData = await callMcpTool<SwapResult | null>("dex-swap", {
+            chainId: pos.chainId,
+            fromToken: pos.tokenAddress,
+            toToken: NATIVE_TOKEN,
+            amount: pos.amount,
+            slippage: "0.02",
+            userWalletAddress: getAccount().address,
+          });
+
+          if (swapData?.tx?.to && swapData?.tx?.data) {
+            const clients = getChainClients(pos.chainId);
+            const hash = await clients.wallet.sendTransaction({
+              chain: clients.chain,
+              account: getAccount(),
+              to: swapData.tx.to as `0x${string}`,
+              data: swapData.tx.data as `0x${string}`,
+              value: BigInt(swapData.tx.value || "0"),
+            });
+            await clients.public.waitForTransactionReceipt({ hash });
+
+            // CRIT-2 fix: Update PnL tracking
+            const pnlValue = pnlPercent * parseFloat(pos.amount) / 1e18;
+            state.totalPnl += pnlValue;
+
+            if (pnlValue < 0) {
+              state.consecutiveLosses++;
+            } else {
+              state.consecutiveLosses = 0;
+            }
+
+            try {
+              await logDecisionOnChain(
+                { phase: "position_closed", token: pos.tokenAddress, pnlPercent, pnlValue, reason, chainId: pos.chainId },
+                5 // POSITION_CLOSED
+              );
+            } catch { /* best effort */ }
+
+            emit("agent:swap", { phase: "position_closed", token: pos.tokenAddress, pnlPercent: (pnlPercent * 100).toFixed(2) + "%", reason });
+            positionsToClose.push(i);
+          }
+        } catch (err) {
+          console.warn(`[demo-agent] Failed to close position ${pos.tokenAddress}: ${err}`);
+        }
+      }
+    } catch {
+      // Price fetch failed for this position, skip
+    }
+  }
+
+  // Remove closed positions (reverse order to preserve indices)
+  for (let i = positionsToClose.length - 1; i >= 0; i--) {
+    state.positions.splice(positionsToClose[i], 1);
+  }
+}
+
+// ─── Signal Analysis (fallback when LLM unavailable) ───────────────────────
 
 function analyzeSignal(
   signal: SmartMoneyActivity,
-  priceInfo: { price: string; change24h: string } | null,
-  klines: { vol: string; c: string }[]
+  priceInfo: PriceInfo | null,
+  klines: KlineData[]
 ): number {
   let confidence = 0.5;
 
@@ -430,8 +568,9 @@ export async function startAgent(overrides?: Partial<AgentConfig>) {
   agentConfig = { ...DEFAULT_CONFIG, ...overrides };
   state = { running: true, currentCycle: 0, totalPnl: 0, consecutiveLosses: 0, lastDecisionId: null, positions: [] };
 
-  // Ensure agent is registered
-  const isReg = await getPublicClient().readContract({
+  // Ensure agent is registered (lineage contract is on X Layer)
+  const xl = xlayerClients();
+  const isReg = await xl.public.readContract({
     address: contractAddress,
     abi: LINEAGE_WRITE_ABI,
     functionName: "isRegistered",
@@ -439,13 +578,15 @@ export async function startAgent(overrides?: Partial<AgentConfig>) {
   });
 
   if (!isReg) {
-    const hash = await getWalletClient().writeContract({
+    const hash = await xl.wallet.writeContract({
+      chain: xl.chain,
+      account: getAccount(),
       address: contractAddress,
       abi: LINEAGE_WRITE_ABI,
       functionName: "registerAgent",
       args: ["Omnispect-X Demo Agent v1"],
     });
-    await getPublicClient().waitForTransactionReceipt({ hash });
+    await xl.public.waitForTransactionReceipt({ hash });
   }
 
   emit("agent:cycle-complete", { phase: "started", address: getAccount().address });

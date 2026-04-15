@@ -2,6 +2,7 @@ import type { TrustScoreData } from "../components/TrustScoreCard";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const WS_BASE = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3001/ws";
+const AGENT_SECRET = process.env.NEXT_PUBLIC_AGENT_SECRET || "";
 
 async function fetchWithTimeout<T>(url: string, opts: RequestInit = {}, ms = 15000): Promise<T> {
   const controller = new AbortController();
@@ -13,6 +14,10 @@ async function fetchWithTimeout<T>(url: string, opts: RequestInit = {}, ms = 150
   } finally {
     clearTimeout(id);
   }
+}
+
+function agentHeaders(): HeadersInit {
+  return AGENT_SECRET ? { "x-agent-secret": AGENT_SECRET } : {};
 }
 
 export async function fetchTrustScore(address: string): Promise<TrustScoreData> {
@@ -63,15 +68,15 @@ interface AgentStateResponse {
 }
 
 export async function fetchAgentState(): Promise<AgentStateResponse> {
-  return fetchWithTimeout<AgentStateResponse>(`${API_BASE}/api/agent/state`);
+  return fetchWithTimeout<AgentStateResponse>(`${API_BASE}/api/agent/state`, { headers: agentHeaders() });
 }
 
 export async function startAgent(): Promise<{ status: string; state: AgentStateResponse }> {
-  return fetchWithTimeout<{ status: string; state: AgentStateResponse }>(`${API_BASE}/api/agent/start`, { method: "POST" });
+  return fetchWithTimeout<{ status: string; state: AgentStateResponse }>(`${API_BASE}/api/agent/start`, { method: "POST", headers: agentHeaders() });
 }
 
 export async function stopAgent(): Promise<{ status: string; state: AgentStateResponse }> {
-  return fetchWithTimeout<{ status: string; state: AgentStateResponse }>(`${API_BASE}/api/agent/stop`, { method: "POST" });
+  return fetchWithTimeout<{ status: string; state: AgentStateResponse }>(`${API_BASE}/api/agent/stop`, { method: "POST", headers: agentHeaders() });
 }
 
 interface WSEvent {

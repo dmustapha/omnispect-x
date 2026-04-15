@@ -1,5 +1,6 @@
-import { createPublicClient, http, getContract, defineChain, type Abi } from "viem";
+import { createPublicClient, http, getContract, type Abi } from "viem";
 import { config } from "../config";
+import { xlayer } from "../lib/chains";
 import type { DecisionNode, ReasoningPayload, AgentStats, ActionType } from "../types";
 
 // ─── Contract ABI (subset for reads) ───────────────────────────────────────
@@ -68,13 +69,6 @@ const LINEAGE_ABI = [
 ] as const satisfies Abi;
 
 // ─── Client Setup ───────────────────────────────────────────────────────────
-
-const xlayer = defineChain({
-  id: 196,
-  name: "X Layer",
-  nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
-  rpcUrls: { default: { http: [config.xlayer.rpcUrl] } },
-});
 
 const client = createPublicClient({
   chain: xlayer,

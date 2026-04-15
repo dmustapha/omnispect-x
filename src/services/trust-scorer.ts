@@ -37,10 +37,25 @@ const BLUE_CHIPS = new Set([
 
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
+// ─── Score Cache (60s TTL) ──────────────────────────────────────────────
+
+const scoreCache = new Map<string, { result: TrustScoreResponse; expiry: number }>();
+const SCORE_CACHE_TTL = 60_000;
+
+function getCached(key: string): TrustScoreResponse | null {
+  const entry = scoreCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiry) { scoreCache.delete(key); return null; }
+  return entry.result;
+}
+
 // ─── Main Entry Point ───────────────────────────────────────────────────
 
 export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResponse> {
   const { agentAddress, chainId } = req;
+  const cacheKey = `${agentAddress}:${chainId ?? 196}`;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
   const startMs = Date.now();
 
   // Map chainId to chain list for portfolio queries
@@ -175,7 +190,7 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
   const queryDurationMs = Date.now() - startMs;
   const activeChains = Array.from(chainMap.keys()).map(c => CHAIN_NAMES[c] || `Chain ${c}`);
 
-  return {
+  const response: TrustScoreResponse = {
     address: agentAddress,
     overallScore,
     classification,
@@ -196,6 +211,9 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
     },
     timestamp: Date.now(),
   };
+
+  scoreCache.set(cacheKey, { result: response, expiry: Date.now() + SCORE_CACHE_TTL });
+  return response;
 }
 
 // ─── Axis 1: Transaction Patterns (0-25) ─────────────────────────────────
