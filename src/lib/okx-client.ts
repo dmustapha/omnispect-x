@@ -245,9 +245,10 @@ export async function swapQuote(params: SwapQuoteParams): Promise<SwapQuote | nu
     fromTokenAddress: params.fromTokenAddress,
     toTokenAddress: params.toTokenAddress,
     amount: params.amount,
-    ...(params.slippage && { slippage: params.slippage }),
+    swapMode: "exactIn",
+    ...(params.slippage && { priceImpactProtectionPercent: params.slippage }),
   }).toString();
-  const path = `/api/v5/dex/aggregator/quote?${qs}`;
+  const path = `/api/v6/dex/aggregator/quote?${qs}`;
   const data = await okxGet<SwapQuote>(path);
   return data[0] ?? null;
 }
@@ -258,10 +259,11 @@ export async function swap(params: SwapParams): Promise<SwapResult | null> {
     fromTokenAddress: params.fromTokenAddress,
     toTokenAddress: params.toTokenAddress,
     amount: params.amount,
-    slippage: params.slippage || "0.01",
+    slippagePercent: params.slippage || "1",
     userWalletAddress: params.userWalletAddress,
+    swapMode: "exactIn",
   }).toString();
-  const path = `/api/v5/dex/aggregator/swap?${qs}`;
+  const path = `/api/v6/dex/aggregator/swap?${qs}`;
   const data = await okxGet<SwapResult>(path);
   return data[0] ?? null;
 }
@@ -271,7 +273,7 @@ export async function approveTransaction(
   amount: string,
   chainIndex = "196"
 ): Promise<{ data: string; to: string } | null> {
-  const path = `/api/v5/dex/aggregator/approve-transaction?chainIndex=${chainIndex}&tokenContractAddress=${tokenAddress}&approveAmount=${amount}`;
+  const path = `/api/v6/dex/aggregator/approve-transaction?chainIndex=${chainIndex}&tokenContractAddress=${tokenAddress}&approveAmount=${amount}`;
   const data = await okxGet<{ data: string; to: string }>(path);
   return data[0] ?? null;
 }
