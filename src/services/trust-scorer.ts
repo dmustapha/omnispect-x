@@ -1,4 +1,5 @@
 import { okxClient } from "../lib/okx-client";
+import { uniswapClient } from "../lib/uniswap-client";
 import type {
   TrustScoreRequest,
   TrustScoreResponse,
@@ -6,6 +7,9 @@ import type {
   DimensionScore,
   UniswapRiskAssessment,
   TokenBalance,
+  SecurityReport,
+  PoolRiskAssessment,
+  PortfolioOverview,
 } from "../types";
 
 const CHAIN_NAMES: Record<string, string> = {
@@ -85,11 +89,55 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
   );
   const blueChipValue = blueChipTokens.reduce((s, t) => s + t.usdValue, 0);
 
-  // Score each dimension
+  // ── Deep analysis: tokenScan, uniswap risk, portfolio overview (parallel, best-effort) ──
+  const topTokenAddresses = tokenValues
+    .filter(t => t.tokenAddress?.toLowerCase() !== NATIVE_TOKEN)
+    .slice(0, 5)
+    .map(t => ({ address: t.tokenAddress, chainIndex: t.chainIndex || "196" }));
+
+  const [scanResults, poolResults, overviewResult] = await Promise.all([
+    // Token security scans (top 5 non-native tokens)
+    Promise.allSettled(
+      topTokenAddresses.map(t =>
+        okxClient.security.tokenScan(t.address, t.chainIndex)
+      )
+    ),
+    // Uniswap pool risk (top 3 non-native tokens)
+    Promise.allSettled(
+      topTokenAddresses.slice(0, 3).map(t =>
+        uniswapClient.getPoolRisk(t.address)
+      )
+    ),
+    // Portfolio overview (PnL, win rate, trade count)
+    okxClient.walletPortfolio.portfolioOverview(agentAddress).catch(() => null),
+  ]);
+
+  const securityScans: SecurityReport[] = scanResults
+    .filter(r => r.status === "fulfilled")
+    .map(r => (r as PromiseFulfilledResult<SecurityReport>).value)
+    .filter(Boolean);
+
+  const poolRisks: PoolRiskAssessment[] = poolResults
+    .filter(r => r.status === "fulfilled")
+    .map(r => (r as PromiseFulfilledResult<PoolRiskAssessment>).value)
+    .filter(Boolean);
+
+  const overview: PortfolioOverview | null = overviewResult;
+
+  // Compute uniswap risk summary
+  const uniswapRisk: UniswapRiskAssessment = poolRisks.length > 0
+    ? {
+        poolsAnalyzed: poolRisks.length,
+        avgLiquidityScore: Math.round(poolRisks.reduce((s, p) => s + p.riskScore, 0) / poolRisks.length),
+        concentrationRisk: Math.round(Math.max(...poolRisks.map(p => p.concentrationRatio)) * 100),
+      }
+    : { poolsAnalyzed: 0, avgLiquidityScore: 0, concentrationRisk: 0 };
+
+  // Score each dimension (now with deep data)
   const tp = scoreTransactionPatterns(tokenValues, computedTotalValue, chainMap, balanceList.length);
-  const ci = scoreContractInteractions(riskTokens, meaningfulTokens, blueChipTokens, blueChipValue, computedTotalValue);
-  const ff = scoreFundFlow(tokenValues, computedTotalValue, chainMap, riskTokenValue);
-  const bc = scoreBehavioralConsistency(tokenValues, computedTotalValue, chainMap, blueChipValue);
+  const ci = scoreContractInteractions(riskTokens, meaningfulTokens, blueChipTokens, blueChipValue, computedTotalValue, securityScans);
+  const ff = scoreFundFlow(tokenValues, computedTotalValue, chainMap, riskTokenValue, poolRisks);
+  const bc = scoreBehavioralConsistency(tokenValues, computedTotalValue, chainMap, blueChipValue, overview);
 
   const rawSum = tp.score + ci.score + ff.score + bc.score;
   const overallScore = Math.max(0, Math.min(100, rawSum));
@@ -118,11 +166,11 @@ export async function scoreTrust(req: TrustScoreRequest): Promise<TrustScoreResp
       fundFlow: ff,
       behavioralConsistency: bc,
     },
-    uniswapRisk: { poolsAnalyzed: 0, avgLiquidityScore: 0, concentrationRisk: 0 },
+    uniswapRisk,
     recommendations,
     metadata: {
       chainsQueried: activeChains.length > 0 ? activeChains : Object.values(CHAIN_NAMES),
-      totalDataPoints: balanceList.length,
+      totalDataPoints: balanceList.length + securityScans.length + poolRisks.length,
       queryDurationMs,
       freshness: `${Math.round(queryDurationMs / 1000)}s ago`,
     },
@@ -213,23 +261,60 @@ function scoreContractInteractions(
   blueChips: TokenWithValue[],
   blueChipValue: number,
   totalValue: number,
+  securityScans: SecurityReport[] = [],
 ): DimensionScore {
-  let score = 8;
+  let score = 5;
   const findings: Finding[] = [];
   const rawMetrics: Record<string, number | string> = {};
 
-  // Risk token exposure
+  // ── Deep security scan results (tokenScan API) ──
+  rawMetrics.tokensScanned = securityScans.length;
+
+  if (securityScans.length > 0) {
+    const honeypots = securityScans.filter(s => s.isHoneypot);
+    const highRisk = securityScans.filter(s => s.riskLevel === "high");
+    const medRisk = securityScans.filter(s => s.riskLevel === "medium");
+    const highTax = securityScans.filter(s => parseFloat(s.buyTax || "0") > 10 || parseFloat(s.sellTax || "0") > 10);
+
+    rawMetrics.honeypots = honeypots.length;
+    rawMetrics.highRiskTokens = highRisk.length;
+
+    if (honeypots.length > 0) {
+      score -= 10;
+      findings.push({ category: "honeypot", description: `${honeypots.length} honeypot token(s) detected`, severity: "CRITICAL", evidence: `OKX tokenScan flagged ${honeypots.length} tokens as honeypots` });
+    }
+
+    if (highTax.length > 0) {
+      score -= 3;
+      findings.push({ category: "highTax", description: `${highTax.length} token(s) with >10% buy/sell tax`, severity: "HIGH", evidence: `Abnormal token taxes detected via OKX security scan` });
+    }
+
+    if (highRisk.length > 0) {
+      score -= 3;
+      findings.push({ category: "riskLevel", description: `${highRisk.length} high-risk token(s)`, severity: "HIGH", evidence: `OKX security scan rated ${highRisk.length} tokens as high risk` });
+    } else if (medRisk.length > 0) {
+      score -= 1;
+      findings.push({ category: "riskLevel", description: `${medRisk.length} medium-risk token(s)`, severity: "MEDIUM", evidence: `OKX security scan rated ${medRisk.length} tokens as medium risk` });
+    }
+
+    // All scans clean bonus
+    if (honeypots.length === 0 && highRisk.length === 0 && highTax.length === 0) {
+      score += 3;
+      findings.push({ category: "security", description: "All scanned tokens passed security checks", severity: "LOW", evidence: `${securityScans.length} tokens passed OKX tokenScan` });
+    }
+  }
+
+  // Risk token exposure (from portfolio balance flags)
   rawMetrics.riskTokenCount = riskTokens.length;
   rawMetrics.totalTokensAnalyzed = allTokens.length;
 
   if (riskTokens.length === 0 && allTokens.length > 0) {
-    score += 5;
-    findings.push({ category: "security", description: "No risk-flagged tokens held", severity: "LOW", evidence: `${allTokens.length} tokens scanned, 0 flagged` });
+    score += 3;
   } else if (riskTokens.length > 5) {
-    score -= 8;
+    score -= 5;
     findings.push({ category: "riskTokens", description: `${riskTokens.length} risk-flagged tokens held`, severity: "CRITICAL", evidence: `OKX isRiskToken flag on ${riskTokens.length} tokens` });
   } else if (riskTokens.length > 0) {
-    score -= 3;
+    score -= 2;
     findings.push({ category: "riskTokens", description: `${riskTokens.length} risk-flagged token(s)`, severity: "MEDIUM", evidence: `Tokens flagged by OKX security` });
   }
 
@@ -237,33 +322,28 @@ function scoreContractInteractions(
   rawMetrics.blueChipTokens = blueChips.length;
   rawMetrics.blueChipValue = formatUsd(blueChipValue);
 
-  if (blueChips.length >= 5) { score += 5; }
+  if (blueChips.length >= 5) { score += 4; }
   else if (blueChips.length >= 3) { score += 3; }
   else if (blueChips.length >= 1) { score += 2; }
   else if (allTokens.length > 5) {
     findings.push({ category: "quality", description: "No blue-chip tokens held", severity: "MEDIUM", evidence: "No USDT, USDC, DAI, WBTC, WETH, LINK, UNI, AAVE, or MKR" });
-    score -= 2;
+    score -= 1;
   }
 
-  // Blue-chip ratio (higher = more trustworthy)
+  // Blue-chip ratio
   if (totalValue > 0) {
     const bcRatio = blueChipValue / totalValue;
     rawMetrics.blueChipRatio = `${(bcRatio * 100).toFixed(1)}%`;
-    if (bcRatio > 0.5) { score += 4; }
-    else if (bcRatio > 0.2) { score += 2; }
+    if (bcRatio > 0.5) { score += 3; }
+    else if (bcRatio > 0.2) { score += 1; }
   }
-
-  // Token type diversity
-  const tokenTypes = new Set(allTokens.map(t => t.tokenType).filter(Boolean));
-  rawMetrics.tokenTypes = tokenTypes.size;
-  if (tokenTypes.size > 1) { score += 1; }
 
   return {
     score: clamp(score),
     findings,
     evidence: {
-      dataPoints: allTokens.length,
-      sources: ["OKX Token Risk Scan", "Blue-chip Analysis"],
+      dataPoints: allTokens.length + securityScans.length,
+      sources: compact(["OKX Token Risk Scan", "OKX tokenScan Security", securityScans.length > 0 ? "Deep Security Analysis" : null]),
       rawMetrics,
     },
   };
@@ -276,6 +356,7 @@ function scoreFundFlow(
   totalValue: number,
   chainMap: Map<string, { count: number; value: number }>,
   riskTokenValue: number,
+  poolRisks: PoolRiskAssessment[] = [],
 ): DimensionScore {
   let score = 5;
   const findings: Finding[] = [];
@@ -284,8 +365,8 @@ function scoreFundFlow(
   rawMetrics.totalValueUsd = formatUsd(totalValue);
 
   // Portfolio size — larger = more trusted
-  if (totalValue > 100000) { score += 6; }
-  else if (totalValue > 10000) { score += 4; }
+  if (totalValue > 100000) { score += 5; }
+  else if (totalValue > 10000) { score += 3; }
   else if (totalValue > 1000) { score += 2; }
   else if (totalValue > 10) { score += 1; }
 
@@ -297,28 +378,52 @@ function scoreFundFlow(
     rawMetrics.topToken = tokens[0].symbol || "?";
 
     if (concentration > 0.95) {
-      score -= 5;
+      score -= 4;
       findings.push({ category: "concentration", description: "Single token >95% of portfolio", severity: "HIGH", evidence: `${tokens[0].symbol}: ${(concentration * 100).toFixed(1)}% of portfolio` });
     } else if (concentration > 0.8) {
       score -= 2;
       findings.push({ category: "concentration", description: "High portfolio concentration", severity: "MEDIUM", evidence: `Top token: ${(concentration * 100).toFixed(1)}%` });
     } else if (concentration < 0.3) {
-      score += 5;
-      findings.push({ category: "diversification", description: "Well-diversified portfolio", severity: "LOW", evidence: `Top token is only ${(concentration * 100).toFixed(1)}% of total` });
-    } else if (concentration < 0.5) {
       score += 3;
+    } else if (concentration < 0.5) {
+      score += 2;
     }
   }
 
   // Cross-chain value distribution
   if (chainMap.size >= 3) {
-    score += 4;
+    score += 3;
     const chainBreakdown = Array.from(chainMap.entries())
       .map(([c, d]) => `${CHAIN_NAMES[c] || c}: ${formatUsd(d.value)}`)
       .join(", ");
     findings.push({ category: "crossChain", description: `Active across ${chainMap.size} chains`, severity: "LOW", evidence: chainBreakdown });
   } else if (chainMap.size >= 2) {
-    score += 2;
+    score += 1;
+  }
+
+  // ── Uniswap Pool Liquidity Risk (NEW — from uniswap-client) ──
+  if (poolRisks.length > 0) {
+    const avgRiskScore = poolRisks.reduce((s, p) => s + p.riskScore, 0) / poolRisks.length;
+    const maxConcentration = Math.max(...poolRisks.map(p => p.concentrationRatio));
+
+    rawMetrics.poolsAnalyzed = poolRisks.length;
+    rawMetrics.avgPoolSafety = Math.round(avgRiskScore);
+    rawMetrics.maxPoolConcentration = `${(maxConcentration * 100).toFixed(1)}%`;
+
+    if (avgRiskScore > 70) {
+      score += 4;
+      findings.push({ category: "liquidity", description: "Tokens have deep pool liquidity", severity: "LOW", evidence: `Avg pool safety: ${Math.round(avgRiskScore)}/100 across ${poolRisks.length} pools` });
+    } else if (avgRiskScore > 40) {
+      score += 2;
+    } else {
+      score -= 3;
+      findings.push({ category: "liquidity", description: "Tokens have thin liquidity pools", severity: "HIGH", evidence: `Avg pool safety: ${Math.round(avgRiskScore)}/100 — high slippage risk` });
+    }
+
+    if (maxConcentration > 0.5) {
+      score -= 2;
+      findings.push({ category: "poolConcentration", description: "High liquidity concentration in pools", severity: "MEDIUM", evidence: `Max concentration ratio: ${(maxConcentration * 100).toFixed(1)}%` });
+    }
   }
 
   // Risk token value exposure
@@ -326,10 +431,10 @@ function scoreFundFlow(
     const riskRatio = riskTokenValue / totalValue;
     rawMetrics.riskValueRatio = `${(riskRatio * 100).toFixed(1)}%`;
     if (riskRatio > 0.3) {
-      score -= 4;
+      score -= 3;
       findings.push({ category: "riskExposure", description: "High value in risk-flagged tokens", severity: "HIGH", evidence: `${(riskRatio * 100).toFixed(1)}% of value in risky tokens` });
     } else if (riskRatio > 0.1) {
-      score -= 2;
+      score -= 1;
     }
   }
 
@@ -337,10 +442,11 @@ function scoreFundFlow(
     score: clamp(score),
     findings,
     evidence: {
-      dataPoints: tokens.length,
+      dataPoints: tokens.length + poolRisks.length,
       sources: compact([
         `OKX Portfolio (${chainMap.size} chains)`,
         chainMap.size > 1 ? "Cross-chain Analysis" : null,
+        poolRisks.length > 0 ? "Uniswap Pool Risk Analysis" : null,
       ]),
       rawMetrics,
     },
@@ -354,72 +460,94 @@ function scoreBehavioralConsistency(
   totalValue: number,
   chainMap: Map<string, { count: number; value: number }>,
   blueChipValue: number,
+  overview: PortfolioOverview | null = null,
 ): DimensionScore {
-  let score = 5;
+  let score = 3;
   const findings: Finding[] = [];
   const rawMetrics: Record<string, number | string> = {};
 
-  // Portfolio composition consistency — are tokens well-distributed or chaotic?
+  // ── Trading history from Portfolio Overview (NEW — from OKX API) ──
+  if (overview) {
+    const totalTrades = parseInt(overview.totalTrades || "0", 10);
+    const winRate = parseFloat(overview.winRate || "0");
+    const totalPnl = parseFloat(overview.totalPnl || "0");
+
+    rawMetrics.totalTrades = totalTrades;
+    rawMetrics.winRate = `${(winRate * 100).toFixed(1)}%`;
+    rawMetrics.totalPnl = formatUsd(totalPnl);
+
+    // Trade count — active traders are more consistent
+    if (totalTrades > 100) { score += 4; }
+    else if (totalTrades > 30) { score += 3; }
+    else if (totalTrades > 10) { score += 2; }
+    else if (totalTrades > 0) { score += 1; }
+
+    // Win rate — consistent winners are trustworthy
+    if (winRate > 0.6) {
+      score += 3;
+      findings.push({ category: "performance", description: "Above-average trading win rate", severity: "LOW", evidence: `Win rate: ${(winRate * 100).toFixed(1)}% across ${totalTrades} trades` });
+    } else if (winRate > 0.4) {
+      score += 1;
+    } else if (winRate < 0.2 && totalTrades > 10) {
+      score -= 2;
+      findings.push({ category: "performance", description: "Very low win rate", severity: "MEDIUM", evidence: `Win rate: ${(winRate * 100).toFixed(1)}% — possible bot or inexperienced trader` });
+    }
+
+    // PnL direction
+    if (totalPnl > 1000) { score += 2; }
+    else if (totalPnl < -5000) {
+      score -= 1;
+      findings.push({ category: "losses", description: "Significant cumulative losses", severity: "MEDIUM", evidence: `Total PnL: ${formatUsd(totalPnl)}` });
+    }
+  }
+
+  // Portfolio composition consistency
   if (tokens.length >= 5 && totalValue > 0) {
     const values = tokens.map(t => t.usdValue);
     const top5Value = values.slice(0, 5).reduce((s, v) => s + v, 0);
     const top5Ratio = top5Value / totalValue;
     rawMetrics.top5Concentration = `${(top5Ratio * 100).toFixed(1)}%`;
 
-    // A moderate concentration (40-80%) in top 5 suggests deliberate portfolio management
     if (top5Ratio > 0.4 && top5Ratio < 0.8) {
-      score += 4;
+      score += 3;
       findings.push({ category: "portfolioManagement", description: "Balanced portfolio distribution", severity: "LOW", evidence: `Top 5 tokens = ${(top5Ratio * 100).toFixed(1)}% of value` });
-    } else if (top5Ratio > 0.95) {
-      score -= 1;
-      findings.push({ category: "portfolioManagement", description: "Nearly all value in top 5 tokens", severity: "LOW", evidence: `Top 5 = ${(top5Ratio * 100).toFixed(1)}%` });
     }
   }
 
-  // Chain consistency — active on same chains with value
+  // Chain consistency
   const chainsWithValue = Array.from(chainMap.entries()).filter(([, d]) => d.value > 10);
   rawMetrics.chainsWithValue = chainsWithValue.length;
 
-  if (chainsWithValue.length >= 4) { score += 5; }
-  else if (chainsWithValue.length >= 3) { score += 3; }
-  else if (chainsWithValue.length >= 2) { score += 2; }
+  if (chainsWithValue.length >= 4) { score += 3; }
+  else if (chainsWithValue.length >= 3) { score += 2; }
+  else if (chainsWithValue.length >= 2) { score += 1; }
 
-  // Blue-chip ratio as behavioral signal — holding stable assets = mature behavior
+  // Blue-chip ratio as behavioral signal
   if (totalValue > 0) {
     const bcRatio = blueChipValue / totalValue;
     rawMetrics.stableAssetRatio = `${(bcRatio * 100).toFixed(1)}%`;
 
     if (bcRatio > 0.3) {
-      score += 4;
+      score += 3;
       findings.push({ category: "maturity", description: "Significant allocation to established tokens", severity: "LOW", evidence: `${(bcRatio * 100).toFixed(1)}% in blue-chip assets` });
     } else if (bcRatio > 0.1) {
-      score += 2;
+      score += 1;
     }
   }
 
-  // Token count to chain ratio — consistent activity across chains
-  if (chainMap.size > 0) {
-    const avgTokensPerChain = tokens.length / chainMap.size;
-    rawMetrics.avgTokensPerChain = Math.round(avgTokensPerChain);
-
-    if (avgTokensPerChain > 10) { score += 3; }
-    else if (avgTokensPerChain > 5) { score += 2; }
-  }
-
-  // Portfolio sophistication — holding diverse token types and chains
+  // Portfolio sophistication
   const uniqueSymbols = new Set(tokens.map(t => t.symbol?.toUpperCase()));
   rawMetrics.uniqueSymbols = uniqueSymbols.size;
 
-  if (uniqueSymbols.size > 30) { score += 3; }
-  else if (uniqueSymbols.size > 15) { score += 2; }
-  else if (uniqueSymbols.size > 5) { score += 1; }
+  if (uniqueSymbols.size > 30) { score += 2; }
+  else if (uniqueSymbols.size > 15) { score += 1; }
 
   return {
     score: clamp(score),
     findings,
     evidence: {
-      dataPoints: tokens.length + chainMap.size,
-      sources: ["OKX Balance Analysis", "Portfolio Composition"],
+      dataPoints: tokens.length + chainMap.size + (overview ? 3 : 0),
+      sources: compact(["OKX Balance Analysis", "Portfolio Composition", overview ? "OKX Portfolio Overview (PnL/WinRate)" : null]),
       rawMetrics,
     },
   };

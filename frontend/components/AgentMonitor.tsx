@@ -12,11 +12,11 @@ interface WSEvent {
 // ─── Phase Mapping ──────────────────────────────────────────────────────
 
 const PHASES = [
-  { key: "signal", label: "Signal", icon: "~", color: "text-blue-400", bg: "bg-blue-400", border: "border-blue-400" },
-  { key: "analysis", label: "Analysis", icon: ">", color: "text-ox-purple", bg: "bg-ox-purple", border: "border-ox-purple" },
-  { key: "trust-check", label: "Trust Gate", icon: "#", color: "text-ox-caution", bg: "bg-ox-caution", border: "border-ox-caution" },
-  { key: "swap", label: "Execute", icon: "$", color: "text-ox-safe", bg: "bg-ox-safe", border: "border-ox-safe" },
-  { key: "lineage-logged", label: "Log", icon: "+", color: "text-ox-cyan", bg: "bg-ox-cyan", border: "border-ox-cyan" },
+  { key: "signal", label: "Signal", desc: "Collecting market signals", icon: "~", color: "text-blue-400", bg: "bg-blue-400", border: "border-blue-400" },
+  { key: "analysis", label: "Analysis", desc: "AI reasoning on signals", icon: ">", color: "text-ox-purple", bg: "bg-ox-purple", border: "border-ox-purple" },
+  { key: "trust-check", label: "Trust Gate", desc: "Checking wallet trust score", icon: "#", color: "text-ox-caution", bg: "bg-ox-caution", border: "border-ox-caution" },
+  { key: "swap", label: "Execute", desc: "Executing the swap", icon: "$", color: "text-ox-safe", bg: "bg-ox-safe", border: "border-ox-safe" },
+  { key: "lineage-logged", label: "Log", desc: "Logging decision on-chain", icon: "+", color: "text-ox-cyan", bg: "bg-ox-cyan", border: "border-ox-cyan" },
 ];
 
 const EVENT_STYLES: Record<string, { color: string; icon: string }> = {
@@ -106,6 +106,14 @@ export function AgentMonitor() {
 
     return () => ws.close();
   }, []);
+
+  // Tick uptime counter every second
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    if (!startTime) return;
+    const id = setInterval(() => forceUpdate((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, [startTime]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -229,6 +237,11 @@ export function AgentMonitor() {
                   }`}>
                     {phase.label}
                   </span>
+                  {isActive && (
+                    <span className="text-[9px] text-ox-text-muted hidden sm:block">
+                      {phase.desc}
+                    </span>
+                  )}
                 </div>
               );
             })}
@@ -264,10 +277,13 @@ export function AgentMonitor() {
               {running ? (
                 <span className="flex items-center gap-2">
                   <span className="w-1.5 h-1.5 rounded-full bg-ox-safe animate-pulse-dot" />
-                  Waiting for events...
+                  Agent started. Waiting for first event...
                 </span>
               ) : (
-                "Start the agent to see live events"
+                <span className="text-center">
+                  <span className="block mb-1">No events yet.</span>
+                  <span className="text-ox-text-muted text-xs">Press <strong className="text-ox-text-secondary">Start</strong> above to launch the demo trading agent.</span>
+                </span>
               )}
             </div>
           ) : (

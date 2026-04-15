@@ -36,9 +36,9 @@ export default function TrustPage() {
   return (
     <div className="max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="font-display text-2xl font-bold text-ox-text-primary mb-1">Trust Score Lookup</h1>
+        <h1 className="font-display text-2xl font-bold text-ox-text-primary mb-1">Trust Score</h1>
         <p className="text-sm text-ox-text-muted">
-          Multi-chain trust analysis across Ethereum, BSC, Polygon, Arbitrum & X Layer
+          Paste any wallet address to see how trustworthy it is. We analyze transaction history, token holdings, and on-chain behavior across 5 chains to produce a score from 0 (risky) to 100 (safe).
         </p>
       </div>
 
@@ -47,7 +47,7 @@ export default function TrustPage() {
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          placeholder="0x..."
+          placeholder="Paste a wallet address (0x...)"
           aria-label="Wallet address"
           className="ox-input flex-1 px-4 py-3 text-sm"
         />
@@ -88,12 +88,19 @@ export default function TrustPage() {
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
           </div>
-          <p className="text-sm text-ox-text-muted">
-            Enter a wallet address to analyze trust across 4 behavioral dimensions
+          <p className="text-sm text-ox-text-muted mb-3">
+            Paste any Ethereum-compatible wallet address above to generate a trust report.
           </p>
-          <p className="text-xs text-ox-text-muted mt-2 font-mono">
-            Try: 0x131f3b6cD18039D87da0AaECaa5C8462Dd51855D
-          </p>
+          <div className="text-xs text-ox-text-muted space-y-1">
+            <p>We check <strong className="text-ox-text-secondary">4 dimensions</strong>: transaction patterns, contract interactions, fund flow, and behavioral consistency.</p>
+            <p>Each dimension scores 0-25 points. Total: 0-100.</p>
+          </div>
+          <button
+            onClick={() => setAddress("0x131f3b6cD18039D87da0AaECaa5C8462Dd51855D")}
+            className="mt-3 text-xs text-ox-cyan-dim hover:text-ox-cyan transition-colors font-mono cursor-pointer"
+          >
+            Try our demo agent: 0x131f...855D
+          </button>
         </div>
       )}
 

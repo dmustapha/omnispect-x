@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { createWalletClient, createPublicClient, http, keccak256, toBytes, defineChain, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { okxClient } from "../lib/okx-client";
@@ -110,7 +111,7 @@ async function logDecisionOnChain(
     console.warn(`[demo-agent] IPFS pin failed, logging without URI: ${err}`);
   }
   const reasoningHash = keccak256(toBytes(JSON.stringify(reasoning)));
-  const decisionId = keccak256(toBytes(`${Date.now()}-${actionType}-${Math.random()}`));
+  const decisionId = keccak256(toBytes(`${Date.now()}-${actionType}-${randomBytes(16).toString("hex")}`));
 
   // Write to contract
   const hash = await getWalletClient().writeContract({
@@ -288,6 +289,21 @@ async function runCycle() {
 
     let swapTxHash = "0x" + "0".repeat(64);
     try {
+      // Get quote first to validate output
+      const quote = await okxClient.dexSwap.quote({
+        chainIndex: "196",
+        fromTokenAddress: NATIVE_OKB,
+        toTokenAddress: topSignal.tokenAddress,
+        amount: swapAmount,
+      });
+
+      // Validate: reject if quote returns zero output (illiquid pair)
+      const quotedOutput = parseFloat(quote?.routerResult?.toTokenAmount || "0");
+      if (quotedOutput <= 0) {
+        emit("agent:error", { phase: "swap_rejected", reason: "zero_output_quote" });
+        return scheduleCycle();
+      }
+
       const swapData = await okxClient.dexSwap.swap({
         chainIndex: "196",
         fromTokenAddress: NATIVE_OKB,
@@ -297,10 +313,23 @@ async function runCycle() {
         userWalletAddress: getAccount().address,
       });
 
+      // Validate swap response before signing
+      if (!swapData?.tx?.to || !swapData?.tx?.data) {
+        emit("agent:error", { phase: "swap_rejected", reason: "invalid_swap_response" });
+        return scheduleCycle();
+      }
+
+      const txValue = BigInt(swapData.tx.value || "0");
+      const maxValue = BigInt(swapAmount) * 2n; // sanity: never send more than 2x requested
+      if (txValue > maxValue) {
+        emit("agent:error", { phase: "swap_rejected", reason: "tx_value_exceeds_max", txValue: txValue.toString() });
+        return scheduleCycle();
+      }
+
       const hash = await getWalletClient().sendTransaction({
         to: swapData.tx.to as `0x${string}`,
         data: swapData.tx.data as `0x${string}`,
-        value: BigInt(swapData.tx.value),
+        value: txValue,
       });
 
       await getPublicClient().waitForTransactionReceipt({ hash });

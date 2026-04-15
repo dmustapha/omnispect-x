@@ -36,8 +36,7 @@ export default function Home() {
                 <span className="text-ox-cyan">for AI Agents</span>
               </h1>
               <p className="text-base md:text-lg leading-relaxed mb-8 text-ox-text-secondary max-w-[520px]">
-                Multi-dimensional trust scoring and on-chain decision audit trails.
-                Know what any agent did, why it did it, and whether to trust it.
+                Score any wallet's trustworthiness across 4 dimensions. Track every AI agent decision with on-chain proof. Know what an agent did, why it did it, and whether to trust it.
               </p>
               <div className="flex flex-wrap gap-3">
                 <Link href="/trust" className="ox-btn-primary px-6 py-3 text-sm text-center">
@@ -163,7 +162,7 @@ export default function Home() {
                 <h3 className="font-display font-semibold text-xl">Trust Scoring</h3>
               </div>
               <p className="text-sm leading-relaxed text-ox-text-secondary max-w-[420px]">
-                Multi-dimensional behavioral risk analysis across 4 axes with on-chain verification
+                Paste any wallet address and get a 0-100 trust score. We analyze transactions, token holdings, fund flows, and trading behavior across 5 chains.
               </p>
             </div>
           </Link>
@@ -201,7 +200,7 @@ export default function Home() {
                 <h3 className="font-display font-semibold text-xl">Decision Lineage</h3>
               </div>
               <p className="text-sm leading-relaxed text-ox-text-secondary max-w-[420px] mb-6">
-                Full decision-to-action chains logged on-chain with reasoning, confidence & tx proof
+                Every agent decision is recorded on X Layer with full reasoning. See the chain of events from signal detection to trade execution, with links to on-chain proof.
               </p>
               {/* Lineage chain mini */}
               <div className="ox-glass-16 rounded-xl p-4 space-y-2.5">
@@ -260,7 +259,7 @@ export default function Home() {
               <span className="w-2 h-2 rounded-full bg-ox-safe animate-pulse-dot ml-2" />
             </div>
             <p className="text-sm leading-relaxed text-ox-text-secondary max-w-[560px] mb-6">
-              Real-time WebSocket feed of agent signals, swaps, trust checks & cycle events
+              Watch the demo trading agent work in real time. See each step as it happens: signal collection, AI analysis, trust check, swap execution, and on-chain logging.
             </p>
             {/* Terminal mock */}
             <div className="ox-glass-24 rounded-xl overflow-hidden">
@@ -295,7 +294,7 @@ export default function Home() {
                 <h3 className="font-display font-semibold text-xl">Agent Comparison</h3>
               </div>
               <p className="text-sm leading-relaxed text-ox-text-secondary mb-6">
-                Side-by-side radar analysis of multiple agents with dimension-level breakdown
+                Compare 2-3 wallets side by side. See who scores higher in each trust dimension and by how much, so you can pick the right agent for the job.
               </p>
               <div className="grid grid-cols-2 gap-3">
                 {[

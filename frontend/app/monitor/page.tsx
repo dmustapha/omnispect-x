@@ -6,7 +6,7 @@ export default function MonitorPage() {
       <div className="mb-4">
         <h1 className="font-display text-2xl font-bold text-ox-text-primary mb-1">Live Agent Monitor</h1>
         <p className="text-sm text-ox-text-muted">
-          Real-time event feed from the demo trading agent
+          Watch the demo trading agent work in real time. It runs a 5-step cycle: collect market signals, analyze with AI, check wallet trust, execute a swap, then log the decision on-chain. Press Start to begin.
         </p>
       </div>
       <AgentMonitor />

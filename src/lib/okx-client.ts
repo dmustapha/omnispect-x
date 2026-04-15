@@ -41,33 +41,50 @@ function authHeaders(method: string, path: string, body?: string): Record<string
   };
 }
 
+// ─── Retry Helper ───────────────────────────────────────────────────────────
+
+async function withRetry<T>(fn: () => Promise<T>, retries = 2, baseDelay = 500): Promise<T> {
+  for (let i = 0; i <= retries; i++) {
+    try { return await fn(); }
+    catch (err) {
+      if (i === retries) throw err;
+      await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, i)));
+    }
+  }
+  throw new Error("unreachable");
+}
+
 // ─── Base Request ───────────────────────────────────────────────────────────
 
 async function okxGet<T>(path: string): Promise<T[]> {
-  const url = `${config.okx.baseUrl}${path}`;
-  const headers = authHeaders("GET", path);
+  return withRetry(async () => {
+    const url = `${config.okx.baseUrl}${path}`;
+    const headers = authHeaders("GET", path);
 
-  const res = await fetch(url, { headers });
-  if (!res.ok) throw new Error(`OKX API ${path.split("?")[0]} failed: ${res.status}`);
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new Error(`OKX API ${path.split("?")[0]} failed: ${res.status}`);
 
-  const json = (await res.json()) as OKXResponse<T>;
-  if (json.code !== "0") throw new Error(`OKX API error: ${json.msg || json.code}`);
+    const json = (await res.json()) as OKXResponse<T>;
+    if (json.code !== "0") throw new Error(`OKX API error: ${json.msg || json.code}`);
 
-  return json.data;
+    return json.data;
+  });
 }
 
 async function okxPost<T>(path: string, body: Record<string, unknown>): Promise<T[]> {
-  const bodyStr = JSON.stringify(body);
-  const url = `${config.okx.baseUrl}${path}`;
-  const headers = authHeaders("POST", path, bodyStr);
+  return withRetry(async () => {
+    const bodyStr = JSON.stringify(body);
+    const url = `${config.okx.baseUrl}${path}`;
+    const headers = authHeaders("POST", path, bodyStr);
 
-  const res = await fetch(url, { method: "POST", headers, body: bodyStr });
-  if (!res.ok) throw new Error(`OKX API POST ${path.split("?")[0]} failed: ${res.status}`);
+    const res = await fetch(url, { method: "POST", headers, body: bodyStr });
+    if (!res.ok) throw new Error(`OKX API POST ${path.split("?")[0]} failed: ${res.status}`);
 
-  const json = (await res.json()) as OKXResponse<T>;
-  if (json.code !== "0") throw new Error(`OKX API error: ${json.msg || json.code}`);
+    const json = (await res.json()) as OKXResponse<T>;
+    if (json.code !== "0") throw new Error(`OKX API error: ${json.msg || json.code}`);
 
-  return json.data;
+    return json.data;
+  });
 }
 
 // ─── Wallet Portfolio ───────────────────────────────────────────────────────

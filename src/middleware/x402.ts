@@ -162,10 +162,9 @@ export function x402Gate() {
     // Process request
     await next();
 
-    // Settle payment after successful response (async post-response — intentional for x402 flow)
-    const settled = await settlePayment(paymentHeader);
-    if (!settled) {
-      console.error(`[x402] Settlement failed for payment: ${paymentHeader.slice(0, 32)}...`);
-    }
+    // Fire-and-forget settlement (don't block response on settlement)
+    settlePayment(paymentHeader).catch((err) => {
+      console.error(`[x402] Settlement failed for payment: ${paymentHeader.slice(0, 32)}... — ${err}`);
+    });
   };
 }

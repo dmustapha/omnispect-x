@@ -18,7 +18,10 @@ export default function LineagePage() {
   const inFlight = useRef(false);
 
   async function handleSearch() {
-    if (!address.startsWith("0x") || address.length !== 42) return;
+    if (!address.match(/^0x[a-fA-F0-9]{40}$/)) {
+      setError("Invalid address format. Enter a valid 0x address (42 characters).");
+      return;
+    }
     if (inFlight.current) return;
     inFlight.current = true;
     setLoading(true);
@@ -43,9 +46,9 @@ export default function LineagePage() {
   return (
     <div className="max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="font-display text-2xl font-bold text-ox-text-primary mb-1">Decision Lineage Explorer</h1>
+        <h1 className="font-display text-2xl font-bold text-ox-text-primary mb-1">Decision Lineage</h1>
         <p className="text-sm text-ox-text-muted">
-          Trace every decision an agent made — from signal to execution — with on-chain proof
+          See every decision an AI agent made, in order. Each step (signal detected, analysis run, trust checked, swap executed) is logged on-chain so you can verify exactly what happened and why.
         </p>
       </div>
 
@@ -54,7 +57,7 @@ export default function LineagePage() {
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          placeholder="0x..."
+          placeholder="Paste an agent wallet address (0x...)"
           aria-label="Agent wallet address"
           className="ox-input flex-1 px-4 py-3 text-sm"
         />
@@ -77,7 +80,7 @@ export default function LineagePage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           <div className="ox-glass-12 ox-glass-edge rounded-xl p-4">
             <div className="ox-stat-value text-ox-cyan">{stats.totalDecisions}</div>
-            <div className="ox-stat-label">Total Decisions</div>
+            <div className="ox-stat-label">Decisions Logged</div>
           </div>
           <div className="ox-glass-12 ox-glass-edge rounded-xl p-4">
             <div className="text-sm font-mono text-ox-text-secondary">
@@ -110,12 +113,19 @@ export default function LineagePage() {
             <circle cx="12" cy="5" r="2" /><circle cx="6" cy="19" r="2" /><circle cx="18" cy="19" r="2" />
             <path d="M12 7v4" /><path d="M8 13l4-2 4 2" /><path d="M6 17v-4" /><path d="M18 17v-4" />
           </svg>
-          <p className="text-sm text-ox-text-muted">
-            Enter a wallet address to explore its full decision chain
+          <p className="text-sm text-ox-text-muted mb-3">
+            Enter the wallet address of an AI agent to see its full decision history.
           </p>
-          <p className="text-xs text-ox-text-muted mt-2 font-mono">
-            Try: 0x131f3b6cD18039D87da0AaECaa5C8462Dd51855D
-          </p>
+          <div className="text-xs text-ox-text-muted space-y-1">
+            <p>Each decision shows: what type of action was taken (signal, analysis, trust check, swap), confidence level, and a link to the on-chain transaction proof.</p>
+            <p>Click any decision to expand its details.</p>
+          </div>
+          <button
+            onClick={() => setAddress("0x131f3b6cD18039D87da0AaECaa5C8462Dd51855D")}
+            className="mt-3 text-xs text-ox-cyan-dim hover:text-ox-cyan transition-colors font-mono cursor-pointer"
+          >
+            Try our demo agent: 0x131f...855D
+          </button>
         </div>
       )}
 

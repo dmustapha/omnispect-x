@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useRef } from "react";
+import dynamic from "next/dynamic";
 import { fetchTrustScore } from "../lib/api";
-import { RadarChart } from "./RadarChart";
+
+const RadarChart = dynamic(() => import("./RadarChart").then((m) => m.RadarChart), { ssr: false });
 
 interface AgentScore {
   address: string;
@@ -74,6 +76,7 @@ export function CompareView() {
     <div>
       {/* Input area */}
       <div className="ox-glass-16 ox-glass-edge rounded-2xl p-5 mb-6">
+        <p className="text-xs text-ox-text-muted mb-3">Enter at least 2 wallet addresses below, then click Compare. Each address gets scored independently and results are shown side by side.</p>
         <div className="space-y-2.5 mb-4">
           {addresses.map((addr, i) => (
             <div key={i} className="flex items-center gap-3">

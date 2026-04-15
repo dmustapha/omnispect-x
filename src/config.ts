@@ -25,6 +25,7 @@ export const config: AppConfig = {
   agentWallet: {
     privateKey: process.env.PRIVATE_KEY || "",
   },
+  agentSecret: process.env.AGENT_SECRET || "",
   corsOrigin: process.env.CORS_ORIGIN || "http://localhost:3000",
   x402: {
     paymentTokenAddress: "0x4ae46a509f6b1d9056937ba4500cb143933d2dc8", // USDG
