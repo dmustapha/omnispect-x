@@ -1,22 +1,10 @@
 import type { UniswapQuote, PoolRiskAssessment } from "../types";
 import { config } from "../config";
+import { withRetry } from "./retry";
+import { X_LAYER_CHAIN_ID } from "./chains";
 
 const UNISWAP_API = "https://trade-api.gateway.uniswap.org";
-const X_LAYER_CHAIN_ID = 196;
 const NATIVE_TOKEN = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
-
-// ─── Retry Helper ──────────────────────────────────────────────────────────
-
-async function withRetry<T>(fn: () => Promise<T>, retries = 2, baseDelay = 500): Promise<T> {
-  for (let i = 0; i <= retries; i++) {
-    try { return await fn(); }
-    catch (err) {
-      if (i === retries) throw err;
-      await new Promise(r => setTimeout(r, baseDelay * Math.pow(2, i)));
-    }
-  }
-  throw new Error("unreachable");
-}
 
 // ─── Quote ──────────────────────────────────────────────────────────────────
 

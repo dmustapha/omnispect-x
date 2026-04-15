@@ -61,7 +61,7 @@ export default function Home() {
                   </div>
                   {/* Agent info */}
                   <div className="pt-1">
-                    <p className="font-display font-semibold text-base text-ox-text-primary">agent-alpha.xlayer</p>
+                    <p className="font-display font-semibold text-base text-ox-text-primary">0x131f...855D</p>
                     <p className="text-xs mt-1 text-ox-text-secondary">DeFi Yield Optimizer</p>
                     <span className="inline-flex items-center gap-1.5 mt-2 px-2 py-0.5 rounded-full text-xs font-medium bg-ox-safe/10 text-ox-safe">
                       <span className="w-1.5 h-1.5 rounded-full bg-ox-safe" /> Safe
@@ -139,7 +139,7 @@ export default function Home() {
                 <h3 className="font-display font-semibold text-xl">Trust Scoring</h3>
               </div>
               <p className="text-sm leading-relaxed text-ox-text-secondary max-w-[420px]">
-                Paste any wallet address and get a 0-100 trust score. We analyze transactions, token holdings, fund flows, and trading behavior across 5 chains.
+                Paste any wallet address and get a 0-100 trust score. We analyze transactions, token holdings, fund flows, and trading behavior across multiple EVM chains.
               </p>
             </div>
           </Link>
@@ -147,7 +147,7 @@ export default function Home() {
             <div className="space-y-4">
               {[
                 { label: "On-chain Verified", sub: "Immutable trust records", color: "var(--ox-safe)" },
-                { label: "Real-time Updates", sub: "Scores shift with behavior", color: "var(--ox-cyan)" },
+                { label: "Live Monitoring", sub: "WebSocket event stream", color: "var(--ox-cyan)" },
                 { label: "4-Axis Analysis", sub: "Txn Patterns, Contracts, Fund Flow, Consistency", color: "var(--ox-purple)" },
               ].map((item) => (
                 <div key={item.label} className="flex items-center gap-3">
@@ -215,8 +215,8 @@ export default function Home() {
                 <p className="text-[10px] text-ox-text-muted">On-chain logged</p>
               </div>
               <div>
-                <p className="font-display font-bold text-xl text-ox-purple">~200ms</p>
-                <p className="text-[10px] text-ox-text-muted">Log latency</p>
+                <p className="font-display font-bold text-xl text-ox-purple">IPFS+Chain</p>
+                <p className="text-[10px] text-ox-text-muted">Dual-anchored</p>
               </div>
             </div>
           </div>

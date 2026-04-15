@@ -5,7 +5,9 @@ import { lineageQuery } from "../services/lineage-query";
 import { demoAgent } from "../services/demo-agent";
 import { x402Gate } from "../middleware/x402";
 import { addClient, removeClient, getClientCount } from "./ws";
+import { registerAllTools } from "./mcp";
 import { config } from "../config";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Context, Next } from "hono";
 import type { TrustScoreRequest } from "../types";
 
@@ -15,6 +17,9 @@ if (!config.xlayer.lineageLoggerAddress) {
 }
 if (!config.okx.apiKey) {
   console.warn("[config] OKX_API_KEY not set — API calls will fail. Set it in .env");
+}
+if (!config.agentSecret) {
+  console.warn("[config] AGENT_SECRET not set — agent control routes are unprotected. Set it in .env for production.");
 }
 
 const app = new Hono();
@@ -41,9 +46,19 @@ const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
 const RATE_LIMIT = 30; // requests per window
 const RATE_WINDOW = 60_000; // 1 minute
 
+// Cleanup expired entries every 5 minutes to prevent memory leak (HIGH-1)
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimitMap) {
+    if (now > entry.resetAt) rateLimitMap.delete(ip);
+  }
+}, 5 * 60_000);
+
 function rateLimit() {
   return async (c: Context, next: Next) => {
-    const ip = c.req.header("x-forwarded-for") || c.req.header("x-real-ip") || "unknown";
+    // Parse first IP from x-forwarded-for header (MED-9)
+    const forwarded = c.req.header("x-forwarded-for");
+    const ip = (forwarded ? forwarded.split(",")[0].trim() : null) || c.req.header("x-real-ip") || "unknown";
     const now = Date.now();
     const entry = rateLimitMap.get(ip);
 
@@ -51,7 +66,7 @@ function rateLimit() {
       rateLimitMap.set(ip, { count: 1, resetAt: now + RATE_WINDOW });
     } else {
       entry.count++;
-      if (entry.count > RATE_LIMIT) {
+      if (entry.count >= RATE_LIMIT) {
         return c.json({ error: "Rate limit exceeded. Try again later." }, 429);
       }
     }
@@ -79,7 +94,7 @@ function agentAuth() {
 
 const allowedOrigins = config.corsOrigin.split(",").map(o => o.trim());
 app.use("*", cors({
-  origin: (origin) => allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
+  origin: (origin) => allowedOrigins.includes(origin) ? origin : null,
 }));
 app.use("/api/*", rateLimit());
 
@@ -101,7 +116,8 @@ app.get("/api/trust/:address", async (c) => {
     const result = await scoreTrust({ agentAddress: address, chainId });
     return c.json(result);
   } catch (err) {
-    return c.json({ error: String(err) }, 500);
+    console.error("[trust-score]", err);
+    return c.json({ error: "Trust score computation failed" }, 500);
   }
 });
 
@@ -114,7 +130,6 @@ app.get("/api/trust/:address/premium", x402Gate(), async (c) => {
   if (!chainId) return c.json({ error: "Invalid chainId" }, 400);
   try {
     const result = await scoreTrust({ agentAddress: address, chainId });
-    // Premium report includes extra data
     return c.json({
       ...result,
       premium: true,
@@ -122,7 +137,8 @@ app.get("/api/trust/:address/premium", x402Gate(), async (c) => {
       uniswapDeepDive: result.uniswapRisk,
     });
   } catch (err) {
-    return c.json({ error: String(err) }, 500);
+    console.error("[trust-score-premium]", err);
+    return c.json({ error: "Trust score computation failed" }, 500);
   }
 });
 
@@ -134,7 +150,8 @@ app.get("/api/lineage/decision/:id", async (c) => {
     const decision = await lineageQuery.getDecision(id);
     return c.json(decision);
   } catch (err) {
-    return c.json({ error: String(err) }, 500);
+    console.error("[lineage-decision]", err);
+    return c.json({ error: "Failed to fetch decision" }, 500);
   }
 });
 
@@ -146,7 +163,8 @@ app.get("/api/lineage/:address/stats", async (c) => {
     const stats = await lineageQuery.getAgentStats(address);
     return c.json(stats);
   } catch (err) {
-    return c.json({ error: String(err) }, 500);
+    console.error("[lineage-stats]", err);
+    return c.json({ error: "Failed to fetch agent stats" }, 500);
   }
 });
 
@@ -162,7 +180,8 @@ app.get("/api/lineage/:address", async (c) => {
     const chain = await lineageQuery.getDecisionChain(address, offset, limit);
     return c.json({ decisions: chain, count: chain.length });
   } catch (err) {
-    return c.json({ error: String(err) }, 500);
+    console.error("[lineage-chain]", err);
+    return c.json({ error: "Failed to fetch lineage chain" }, 500);
   }
 });
 
@@ -175,7 +194,8 @@ app.post("/api/agent/start", async (c) => {
     await demoAgent.start();
     return c.json({ status: "started", state: demoAgent.getState() });
   } catch (err) {
-    return c.json({ error: String(err) }, 500);
+    console.error("[agent-start]", err);
+    return c.json({ error: "Failed to start agent" }, 500);
   }
 });
 
@@ -186,6 +206,67 @@ app.post("/api/agent/stop", (c) => {
 
 app.get("/api/agent/state", (c) => {
   return c.json(demoAgent.getState());
+});
+
+// ─── MCP HTTP Transport ─────────────────────────────────────────────────────
+
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+
+type McpSession = { server: McpServer; transport: WebStandardStreamableHTTPServerTransport; createdAt: number };
+const mcpSessions = new Map<string, McpSession>();
+const MAX_MCP_SESSIONS = 100;
+const MCP_SESSION_TTL = 30 * 60_000; // 30 minutes
+
+// Cleanup stale MCP sessions every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, session] of mcpSessions) {
+    if (now - session.createdAt > MCP_SESSION_TTL) {
+      session.transport.close().catch(() => {});
+      mcpSessions.delete(id);
+    }
+  }
+}, 5 * 60_000);
+
+app.all("/mcp", async (c) => {
+  try {
+    const sessionId = c.req.header("mcp-session-id");
+
+    // Route to existing session
+    if (sessionId && mcpSessions.has(sessionId)) {
+      return await mcpSessions.get(sessionId)!.transport.handleRequest(c.req.raw);
+    }
+
+    // Only POST can create new sessions (initialize)
+    if (c.req.method !== "POST") {
+      if (c.req.method === "DELETE") return c.json({ error: "Session not found" }, 404);
+      return c.json({ error: "Invalid or missing session" }, 400);
+    }
+
+    // Reject new sessions if at capacity
+    if (mcpSessions.size >= MAX_MCP_SESSIONS) {
+      return c.json({ error: "Too many active sessions" }, 503);
+    }
+
+    // Create new stateful session — onsessioninitialized fires after initialize handshake
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: () => crypto.randomUUID(),
+      onsessioninitialized: (newId: string) => {
+        mcpSessions.set(newId, { server: mcpServer, transport, createdAt: Date.now() });
+      },
+    });
+    transport.onclose = () => {
+      if (transport.sessionId) mcpSessions.delete(transport.sessionId);
+    };
+    const mcpServer = new McpServer({ name: "omnispect-x", version: "1.0.0" });
+    registerAllTools(mcpServer);
+    await mcpServer.connect(transport);
+
+    return await transport.handleRequest(c.req.raw);
+  } catch (err) {
+    console.error("[mcp-http]", err);
+    return c.json({ error: "MCP transport error" }, 500);
+  }
 });
 
 // ─── WebSocket Upgrade ──────────────────────────────────────────────────────

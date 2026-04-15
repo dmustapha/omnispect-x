@@ -1,8 +1,9 @@
 import type { Context, Next } from "hono";
 import { createHmac } from "crypto";
-import { createPublicClient, http, defineChain, parseAbiItem, type Hex } from "viem";
+import { createPublicClient, http, parseAbiItem, type Hex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { config } from "../config";
+import { xlayer } from "../lib/chains";
 
 // Derive payTo address once (not on every request)
 const payToAddress = config.agentWallet.privateKey
@@ -10,13 +11,6 @@ const payToAddress = config.agentWallet.privateKey
   : null;
 
 // ─── On-Chain Verification (viem) ──────────────────────────────────────────
-
-const xlayer = defineChain({
-  id: 196,
-  name: "X Layer",
-  nativeCurrency: { name: "OKB", symbol: "OKB", decimals: 18 },
-  rpcUrls: { default: { http: [config.xlayer.rpcUrl] } },
-});
 
 const publicClient = createPublicClient({ chain: xlayer, transport: http(config.xlayer.rpcUrl) });
 

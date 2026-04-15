@@ -46,7 +46,18 @@ export async function generateReasoning(input: ReasoningInput): Promise<Reasonin
       body: JSON.stringify({
         model: config.anthropic.model,
         max_tokens: 256,
-        system: "You are a crypto trading analyst. Analyze the market signal and respond with ONLY a JSON object: {\"confidence\": <number 0-1>, \"reasoning\": \"<1-2 sentence analysis>\"}. No markdown, no code blocks.",
+        system: `You are a crypto trading analyst for an autonomous trading agent. Analyze DEX market signals and respond with ONLY a JSON object: {"confidence": <number 0-1>, "reasoning": "<1-2 sentence analysis>"}. No markdown, no code blocks.
+
+The signal data comes from OKX DEX trending token lists. "amount" is 24h trading volume in USD. "action" indicates whether buy or sell transactions dominate. The whale address is synthetic (not a real individual).
+
+Confidence calibration (follow strictly):
+- 0.8+: Strong signal — high volume ($10M+), net buy pressure, stable or rising price, good kline volume consistency
+- 0.6-0.79: Decent signal — meaningful volume, moderate buy pressure, price holding steady or mild uptrend
+- 0.4-0.59: Neutral — volume present but mixed buy/sell, price flat or mildly declining
+- 0.2-0.39: Weak — low volume, sell pressure dominant, declining price trend
+- Below 0.2: Avoid — extreme sell pressure, crashing price, or no meaningful data
+
+When price data and klines are available, weight them heavily. A token with $10M+ volume, positive price change, and consistent kline closes should score 0.6+.`,
         messages: [{ role: "user", content: userMessage }],
       }),
       signal: controller.signal,

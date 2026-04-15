@@ -327,16 +327,16 @@ export function TrustScoreCard({ data }: { data: TrustScoreData }) {
             </p>
             <div className="space-y-2">
               <div>
-                <strong className="text-ox-text-primary">Transaction Patterns (0-25):</strong> Portfolio value, token diversity, transaction count, wallet age, smart money status, win rate.
+                <strong className="text-ox-text-primary">Transaction Patterns (0-25):</strong> Portfolio value, token diversity, transaction count, win rate, PnL performance.
               </div>
               <div>
-                <strong className="text-ox-text-primary">Contract Interactions (0-25):</strong> Security scan (honeypots, risk levels, taxes), token verification, market cap quality, holder count.
+                <strong className="text-ox-text-primary">Contract Interactions (0-25):</strong> Security scan (honeypots, risk levels, buy/sell taxes), token verification, market cap, holder count.
               </div>
               <div>
-                <strong className="text-ox-text-primary">Fund Flow (0-25):</strong> Concentration risk, crashing token exposure, portfolio size, realized PnL, cross-chain activity.
+                <strong className="text-ox-text-primary">Fund Flow (0-25):</strong> Concentration risk, crashing token exposure, portfolio size, realized PnL.
               </div>
               <div>
-                <strong className="text-ox-text-primary">Behavioral Consistency (0-25):</strong> Volume spike detection, leaderboard presence, trade frequency consistency, signal alignment, win rate trajectory.
+                <strong className="text-ox-text-primary">Behavioral Consistency (0-25):</strong> Volume spike detection, leaderboard presence, trade frequency consistency, signal alignment.
               </div>
             </div>
             <p className="text-[10px] text-ox-text-muted">
