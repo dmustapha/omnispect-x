@@ -319,7 +319,7 @@ The DecisionLineageLogger contract is deployed on X Layer mainnet, and all agent
 
 ## Team
 
-**Dami Mustapha** — Full-stack developer and Web3 builder based in Nigeria. Specializes in AI agent infrastructure, DeFi protocols, and on-chain trust systems. Previous projects include [Agent Auditor](https://github.com/dmustapha/agent-auditor) (multi-chain trust scoring for AI agents), [DeltaAgent](https://github.com/dmustapha/deltaagent) (autonomous Aave V3 trading agent), [GhostFund](https://github.com/dmustapha/ghostfund) (compliant private DeFi vault, Chainlink hackathon winner), and [Verdikt](https://github.com/dmustapha/verdikt) (automated dispute resolution for agent micropayments on Stellar).
+**Dami Mustapha** — Full-stack developer and Web3 builder. Specializes in AI agent infrastructure, DeFi protocols, and on-chain trust systems. Previous projects include [Agent Auditor](https://github.com/dmustapha/agent-auditor) (multi-chain trust scoring for AI agents), [DeltaAgent](https://github.com/dmustapha/deltaagent) (autonomous Aave V3 trading agent), [GhostFund](https://github.com/dmustapha/ghostfund) (compliant private DeFi vault, Chainlink hackathon winner), and [Verdikt](https://github.com/dmustapha/verdikt) (automated dispute resolution for agent micropayments on Stellar).
 
 - GitHub: [@dmustapha](https://github.com/dmustapha)
 - X: [@capitanoo23](https://x.com/capitanoo23)
