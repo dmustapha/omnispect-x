@@ -31,6 +31,7 @@ export interface TrustScoreData {
   address: string;
   overallScore: number;
   classification: "SAFE" | "CAUTION" | "BLOCKLIST";
+  summary?: string;
   dimensions: {
     transactionPatterns: DimensionData;
     contractInteractions: DimensionData;
@@ -148,6 +149,13 @@ export function TrustScoreCard({ data }: { data: TrustScoreData }) {
           <p className="text-[11px] text-ox-text-muted mt-2">
             Trust level: {tier}
           </p>
+
+          {/* Narrative summary */}
+          {data.summary && (
+            <div className="mt-3 p-3 rounded-xl ox-glass-12 border border-ox-border/20">
+              <p className="text-xs text-ox-text-secondary leading-relaxed">{data.summary}</p>
+            </div>
+          )}
 
           {/* Dimension bars with expand */}
           <div className="mt-4 space-y-2">

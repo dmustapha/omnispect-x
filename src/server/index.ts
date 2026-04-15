@@ -110,10 +110,11 @@ app.get("/api/trust/:address", async (c) => {
   const address = c.req.param("address");
   const badAddr = validateAddress(c, address);
   if (badAddr) return badAddr;
-  const chainId = validateChainId(c.req.query("chainId") || "196");
-  if (!chainId) return c.json({ error: "Invalid chainId" }, 400);
+  const rawChainId = c.req.query("chainId");
+  const chainId = rawChainId ? validateChainId(rawChainId) : undefined;
+  if (rawChainId && !chainId) return c.json({ error: "Invalid chainId" }, 400);
   try {
-    const result = await scoreTrust({ agentAddress: address, chainId });
+    const result = await scoreTrust({ agentAddress: address, chainId: chainId ?? undefined });
     return c.json(result);
   } catch (err) {
     console.error("[trust-score]", err);
@@ -126,10 +127,11 @@ app.get("/api/trust/:address/premium", x402Gate(), async (c) => {
   const address = c.req.param("address");
   const badAddr = validateAddress(c, address);
   if (badAddr) return badAddr;
-  const chainId = validateChainId(c.req.query("chainId") || "196");
-  if (!chainId) return c.json({ error: "Invalid chainId" }, 400);
+  const rawChainId = c.req.query("chainId");
+  const chainId = rawChainId ? validateChainId(rawChainId) : undefined;
+  if (rawChainId && !chainId) return c.json({ error: "Invalid chainId" }, 400);
   try {
-    const result = await scoreTrust({ agentAddress: address, chainId });
+    const result = await scoreTrust({ agentAddress: address, chainId: chainId ?? undefined });
     return c.json({
       ...result,
       premium: true,
