@@ -241,6 +241,51 @@ omnispect-x/
   docs/images/                  # Screenshots
 ```
 
+## OnchainOS Skills Used
+
+Omnispect-X integrates 8 OKX OnchainOS skills through direct HMAC-authenticated HTTP API calls:
+
+| Skill | How It's Used |
+|-------|--------------|
+| `okx-wallet-portfolio` | Multi-chain balance analysis across ETH, BSC, Polygon, Arbitrum, X Layer |
+| `okx-security` | Token risk assessment, approval pattern analysis, phishing detection |
+| `okx-dex-signal` | Smart money and whale tracking for trust scoring and agent signal collection |
+| `okx-dex-token` | Token metadata, holder analysis, social link verification |
+| `okx-dex-market` | Live pricing, kline data, volume analysis for trading decisions |
+| `okx-dex-swap` | Token swap execution via 500+ liquidity sources on X Layer |
+| `okx-onchain-gateway` | Gas estimation, transaction simulation, and broadcasting for lineage logging |
+| `okx-x402-payment` | Micropayment gating for premium trust reports |
+
+## Uniswap Integration
+
+- **Pool Risk Analysis**: Queries Uniswap Trading API for liquidity depth, token pair health, and swap routing on X Layer
+- **Swap Execution**: Demo agent executes trades through Uniswap's cross-DEX routing on X Layer (Chain 196)
+
+## How It Works
+
+1. **Trust Scoring**: Query any wallet address. The backend fetches portfolio data across 5 chains via OnchainOS, runs security scans, analyzes transaction patterns, and computes a 4-dimension trust score (0-100).
+
+2. **Decision Lineage**: Every AI agent decision is logged on-chain to the `DecisionLineageLogger` contract on X Layer. Each entry contains: action type, confidence score, trust gate result, reasoning hash (IPFS CID), and links to the previous decision for full chain traversal.
+
+3. **Demo Agent Cycle**: A 5-phase autonomous loop runs continuously:
+   - **Signal Collection**: Fetch smart money movements via `okx-dex-signal`
+   - **LLM Analysis**: Send signals to Claude for reasoning and trade recommendations
+   - **Trust Gate**: Score the target wallet, block if below threshold
+   - **Execution**: Execute swap via `okx-dex-swap` or Uniswap Trading API
+   - **Lineage Logging**: Pin reasoning to IPFS, write decision record to X Layer
+
+4. **x402 Gating**: Premium trust reports require micropayment via the x402 protocol, creating an earn-pay-earn economy loop.
+
+## X Layer Ecosystem Positioning
+
+Omnispect-X fills a gap in X Layer's agent infrastructure: **trust and accountability**. As more AI agents deploy on X Layer, there is no standard way to verify whether an agent (or the wallets it interacts with) can be trusted. Omnispect-X provides:
+
+- A reusable trust scoring service that any X Layer agent can call before executing transactions
+- An on-chain decision lineage registry where agents prove their reasoning is auditable
+- A reference implementation (demo trading agent) showing how trust gating and lineage logging integrate into real agent workflows
+
+The DecisionLineageLogger contract is deployed on X Layer mainnet, and all agent decisions are settled on-chain with sub-cent gas costs.
+
 ## Architecture
 
 ```
@@ -271,6 +316,13 @@ omnispect-x/
               | X Layer (Chain 196)  |
               +----------------------+
 ```
+
+## Team
+
+**Dami Mustapha** — Full-stack developer and Web3 builder based in Nigeria. Specializes in AI agent infrastructure, DeFi protocols, and on-chain trust systems. Previous projects include [Agent Auditor](https://github.com/dmustapha/agent-auditor) (multi-chain trust scoring for AI agents), [DeltaAgent](https://github.com/dmustapha/deltaagent) (autonomous Aave V3 trading agent), [GhostFund](https://github.com/dmustapha/ghostfund) (compliant private DeFi vault, Chainlink hackathon winner), and [Verdikt](https://github.com/dmustapha/verdikt) (automated dispute resolution for agent micropayments on Stellar).
+
+- GitHub: [@dmustapha](https://github.com/dmustapha)
+- X: [@capitanoo23](https://x.com/capitanoo23)
 
 ## License
 
