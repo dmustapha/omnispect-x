@@ -58,16 +58,19 @@ Backend runs on port **3001**. Frontend runs on port **3000**.
 
 ## Features
 
-- **4-Dimension Trust Scoring**: Transaction Patterns, Contract Interactions, Fund Flow, Behavioral Consistency (0-25 each)
-- **Trust Classification**: SAFE (70+), CAUTION (40-69), BLOCKLIST (0-39)
-- **On-Chain Decision Lineage**: Every agent decision logged to `DecisionLineageLogger` on X Layer
-- **Demo Trading Agent**: 5-phase autonomous cycle with LLM reasoning, trust gating, and swap execution
-- **x402 Micropayment Gating**: Premium trust reports behind payment protocol
+- **4-Dimension Trust Scoring**: Transaction Patterns, Contract Interactions, Fund Flow, Behavioral Consistency (0-25 each), each axis powered by distinct data sources
+- **Deep Security Scanning**: OKX tokenScan integration detects honeypots, abnormal taxes, and high-risk tokens
+- **Uniswap Pool Risk Analysis**: Liquidity depth, concentration ratio, and price impact stress testing via Uniswap Trading API
+- **Portfolio Overview Integration**: Win rate, PnL trajectory, and trade frequency from OKX portfolio API feed into behavioral scoring
+- **Trust Classification**: SAFE (70+), CAUTION (40-69), BLOCKLIST (0-39) with severity-tagged findings
+- **On-Chain Decision Lineage**: Every agent decision logged to `DecisionLineageLogger` on X Layer with linked-list traversal
+- **Demo Trading Agent**: 5-phase autonomous cycle with LLM reasoning, trust gating, quote validation, and swap execution
+- **x402 Micropayment Gating**: Premium trust reports behind payment protocol (fire-and-forget settlement)
 - **IPFS Reasoning Storage**: Full reasoning payloads pinned via Pinata
 - **Multi-Chain Balance Analysis**: ETH, BSC, Polygon, Arbitrum, X Layer
 - **OKX OnchainOS Integration**: 8 skills (wallet-portfolio, security, dex-signal, dex-token, dex-market, dex-swap, onchain-gateway, x402-payment)
-- **Uniswap Trading API**: Pool risk analysis and swap execution
-- **WebSocket Monitoring**: Real-time agent events streamed to the dashboard
+- **Security Hardening**: Rate limiting (30 req/min), agent auth middleware, swap quote validation, crypto-secure decision IDs, retry with exponential backoff on all API calls
+- **WebSocket Monitoring**: Real-time agent events streamed to the dashboard with ticking uptime counter
 
 ## Screenshots
 
@@ -103,6 +106,7 @@ Backend runs on port **3001**. Frontend runs on port **3000**.
 | `UNISWAP_API_KEY` | No | Uniswap Trading API key |
 | `X402_PRICE` | No | Price in OKB for premium reports (default `0.01`) |
 | `X402_DEMO_MODE` | No | Set `true` to bypass payment in development |
+| `AGENT_SECRET` | No | Secret token to protect agent start/stop routes (if unset, routes are open) |
 | `LLM_MODEL` | No | Claude model ID (default `claude-haiku-4-5-20251001`) |
 | `AGENT_CONFIDENCE_FLOOR` | No | Minimum confidence to execute (default `0.6`) |
 | `NEXT_PUBLIC_API_URL` | No | Backend URL for frontend (default `http://localhost:3001`) |
@@ -152,15 +156,17 @@ Return trust score with breakdown across four dimensions.
 ```json
 {
   "address": "0x...",
-  "score": 82,
+  "overallScore": 82,
   "classification": "SAFE",
   "dimensions": {
-    "transactionPatterns": 21,
-    "contractInteractions": 20,
-    "fundFlow": 22,
-    "behavioralConsistency": 19
+    "transactionPatterns": { "score": 21, "findings": [...], "evidence": { "dataPoints": 47, "sources": [...], "rawMetrics": {...} } },
+    "contractInteractions": { "score": 20, "findings": [...], "evidence": {...} },
+    "fundFlow": { "score": 22, "findings": [...], "evidence": {...} },
+    "behavioralConsistency": { "score": 19, "findings": [...], "evidence": {...} }
   },
-  "chains": ["ethereum", "bsc", "polygon", "arbitrum", "xlayer"]
+  "uniswapRisk": { "poolsAnalyzed": 3, "avgLiquidityScore": 72, "concentrationRisk": 34 },
+  "recommendations": ["Healthy on-chain profile across multiple chains."],
+  "metadata": { "chainsQueried": ["Ethereum", "BSC", "X Layer"], "totalDataPoints": 55, "queryDurationMs": 2340 }
 }
 ```
 
@@ -186,15 +192,15 @@ Return a single decision record by ID.
 
 #### `POST /api/agent/start`
 
-Start the demo trading agent's 5-phase cycle.
+Start the demo trading agent's 5-phase cycle. Requires `x-agent-secret` header if `AGENT_SECRET` is set.
 
 #### `POST /api/agent/stop`
 
-Stop the demo trading agent.
+Stop the demo trading agent. Requires `x-agent-secret` header if `AGENT_SECRET` is set.
 
 #### `GET /api/agent/state`
 
-Return current agent state and phase.
+Return current agent state and phase. Requires `x-agent-secret` header if `AGENT_SECRET` is set.
 
 ### System
 
@@ -263,7 +269,7 @@ Omnispect-X integrates 8 OKX OnchainOS skills through direct HMAC-authenticated 
 
 ## How It Works
 
-1. **Trust Scoring**: Query any wallet address. The backend fetches portfolio data across 5 chains via OnchainOS, runs security scans, analyzes transaction patterns, and computes a 4-dimension trust score (0-100).
+1. **Trust Scoring**: Query any wallet address. The backend fetches portfolio balances across 5 chains, runs OKX tokenScan on top holdings (honeypot/tax/risk detection), queries Uniswap pool risk (liquidity depth, concentration), and pulls portfolio overview (trade count, win rate, PnL). Each of the 4 axes uses distinct data sources to produce differentiated scores (0-100 total).
 
 2. **Decision Lineage**: Every AI agent decision is logged on-chain to the `DecisionLineageLogger` contract on X Layer. Each entry contains: action type, confidence score, trust gate result, reasoning hash (IPFS CID), and links to the previous decision for full chain traversal.
 
