@@ -8,6 +8,8 @@ services:
     envVars:
       - key: PORT
         value: 3001
+      - key: OKX_BASE_URL
+        value: https://okx-proxy.gnk942nvbx.workers.dev
       - key: OKX_API_KEY
         sync: false
       - key: OKX_SECRET_KEY
@@ -20,3 +22,11 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: UNISWAP_API_KEY
+        sync: false
+      - key: X_LAYER_RPC
+        value: https://rpc.xlayer.tech
+      - key: LINEAGE_CONTRACT
+        sync: false
+      - key: CORS_ORIGIN
+        value: https://omnispect-x.vercel.app
