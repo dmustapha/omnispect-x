@@ -21,7 +21,7 @@ function agentHeaders(): HeadersInit {
 }
 
 export async function fetchTrustScore(address: string): Promise<TrustScoreData> {
-  return fetchWithTimeout<TrustScoreData>(`${API_BASE}/api/trust/${address}`);
+  return fetchWithTimeout<TrustScoreData>(`${API_BASE}/api/trust/${address}`, {}, 120_000);
 }
 
 interface LineageResponse {
@@ -43,7 +43,7 @@ interface LineageResponse {
 }
 
 export async function fetchLineage(address: string, offset = 0, limit = 50): Promise<LineageResponse> {
-  return fetchWithTimeout<LineageResponse>(`${API_BASE}/api/lineage/${address}?offset=${offset}&limit=${limit}`);
+  return fetchWithTimeout<LineageResponse>(`${API_BASE}/api/lineage/${address}?offset=${offset}&limit=${limit}`, {}, 60_000);
 }
 
 interface AgentStatsResponse {
@@ -56,7 +56,7 @@ interface AgentStatsResponse {
 }
 
 export async function fetchAgentStats(address: string): Promise<AgentStatsResponse> {
-  return fetchWithTimeout<AgentStatsResponse>(`${API_BASE}/api/lineage/${address}/stats`);
+  return fetchWithTimeout<AgentStatsResponse>(`${API_BASE}/api/lineage/${address}/stats`, {}, 60_000);
 }
 
 interface AgentStateResponse {
