@@ -8,6 +8,7 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], variable: "--font-jetbrains" });
 
 export const metadata: Metadata = {
+  other: { "ory-verify": "orynth-7384400a897846279262824b62880e7b" },
   title: "Omnispect-X — Agent Trust & Lineage on X Layer",
   description:
     "Multi-dimensional trust scores and on-chain decision lineage for every AI agent. Built on X Layer with OnchainOS.",
